@@ -1,0 +1,103 @@
+[
+  {
+    "id": "CON:customer-due-diligence",
+    "name": "Identify and verify customers before doing business",
+    "canonical_statement": "Before establishing a business relationship (and at risk-based intervals), identify the customer, verify identity from reliable independent sources, identify beneficial owners, and understand the purpose of the relationship.",
+    "themes": ["financial-crime"],
+    "members": [
+      {"obligation_id": "OBL:uksi/2017/692#regulation-27", "jurisdiction": "UK", "role": "primary", "note": "when CDD applies"},
+      {"obligation_id": "OBL:uksi/2017/692#regulation-28", "jurisdiction": "UK", "role": "primary", "note": "the required measures"},
+      {"obligation_id": "OBL:celex/32024R1624#art_20", "jurisdiction": "EU", "role": "primary", "note": "EU AMLR single-rulebook CDD"}
+    ]
+  },
+  {
+    "id": "CON:enhanced-due-diligence",
+    "name": "Apply enhanced measures to high-risk relationships",
+    "canonical_statement": "Where risk is elevated (high-risk third countries, PEPs, complex or unusual patterns), apply enhanced due diligence and enhanced ongoing monitoring proportionate to that risk.",
+    "themes": ["financial-crime"],
+    "members": [
+      {"obligation_id": "OBL:uksi/2017/692#regulation-33", "jurisdiction": "UK", "role": "primary", "note": ""}
+    ]
+  },
+  {
+    "id": "CON:business-risk-assessment",
+    "name": "Maintain a written business-wide financial-crime risk assessment",
+    "canonical_statement": "Identify and assess the money-laundering and terrorist-financing risks the business faces across customers, geographies, products, transactions and channels; keep it written, current, and board-owned.",
+    "themes": ["financial-crime"],
+    "members": [
+      {"obligation_id": "OBL:uksi/2017/692#regulation-18", "jurisdiction": "UK", "role": "primary", "note": ""},
+      {"obligation_id": "OBL:celex/32024R1624#art_10", "jurisdiction": "EU", "role": "primary", "note": "EU AMLR business-wide assessment"}
+    ]
+  },
+  {
+    "id": "CON:records-retention",
+    "name": "Keep compliance records for their statutory periods",
+    "canonical_statement": "Retain due-diligence records, transaction records and processing-activity records for the mandated retention periods, retrievable on demand, deleted defensibly afterwards.",
+    "themes": ["financial-crime", "privacy"],
+    "members": [
+      {"obligation_id": "OBL:uksi/2017/692#regulation-40", "jurisdiction": "UK", "role": "primary", "note": "CDD + transaction records"},
+      {"obligation_id": "OBL:celex/32016R0679#art_30", "jurisdiction": "EU", "role": "primary", "note": "records of processing activities"}
+    ]
+  },
+  {
+    "id": "CON:breach-incident-notification",
+    "name": "Detect, classify and notify security incidents on the statutory clocks",
+    "canonical_statement": "Operate a single incident pipeline that detects and classifies personal-data breaches and ICT incidents and notifies the competent authority within the applicable deadlines (72 hours under GDPR; DORA initial/intermediate/final reports).",
+    "themes": ["privacy", "ict-resilience"],
+    "members": [
+      {"obligation_id": "OBL:celex/32016R0679#art_33", "jurisdiction": "EU", "role": "primary", "note": "personal data breaches, 72h"},
+      {"obligation_id": "OBL:celex/32022R2554#art_17", "jurisdiction": "EU", "role": "supplementary", "note": "ICT incident management process"},
+      {"obligation_id": "OBL:celex/32022R2554#art_19", "jurisdiction": "EU", "role": "primary", "note": "major-incident reporting"}
+    ]
+  },
+  {
+    "id": "CON:unsolicited-electronic-marketing",
+    "name": "Do not send unsolicited marketing without consent or a lawful exception",
+    "canonical_statement": "Direct electronic marketing (calls, fax, email, automated systems) requires prior consent or a narrow existing-customer exception, and unsolicited real-time financial promotions are restricted; honour opt-outs immediately.",
+    "themes": ["privacy", "marketing"],
+    "members": [
+      {"obligation_id": "OBL:celex/32002L0058#art_13", "jurisdiction": "EU", "role": "primary", "note": "ePrivacy unsolicited communications"},
+      {"obligation_id": "OBL:uksi/2005/1529#article-12", "jurisdiction": "UK", "role": "supplementary", "note": "FPO restriction scope"},
+      {"obligation_id": "OBL:uksi/2005/1529#article-32", "jurisdiction": "UK", "role": "primary", "note": "unsolicited real-time promotions"},
+      {"obligation_id": "OBL:uksi/2005/1529#article-33", "jurisdiction": "UK", "role": "supplementary", "note": "solicited real-time carve-out"}
+    ]
+  },
+  {
+    "id": "CON:client-asset-safeguarding",
+    "name": "Safeguard client assets and funds",
+    "canonical_statement": "Segregate client assets and funds from the firm's own, prevent use for own account, place client funds with eligible institutions, and reconcile entitlements regularly.",
+    "themes": ["crypto-conduct"],
+    "members": [
+      {"obligation_id": "OBL:celex/32023R1114#art_70", "jurisdiction": "EU", "role": "primary", "note": "MiCA safekeeping of client crypto-assets and funds"},
+      {"obligation_id": "OBL:celex/32023R1114#art_68", "jurisdiction": "EU", "role": "supplementary", "note": "governance arrangements"}
+    ]
+  },
+  {
+    "id": "CON:accountable-officer-designation",
+    "name": "Designate accountable compliance officers",
+    "canonical_statement": "Appoint and empower the accountable officers the applicable regimes require (e.g. money-laundering compliance officer, data protection officer), with published contact and management-body ownership.",
+    "themes": ["privacy", "financial-crime"],
+    "members": [
+      {"obligation_id": "OBL:celex/32016R0679#art_37", "jurisdiction": "EU", "role": "primary", "note": "DPO designation"},
+      {"obligation_id": "OBL:uksi/2017/692#regulation-21", "jurisdiction": "UK", "role": "primary", "note": "MLRO / internal controls"}
+    ]
+  },
+  {
+    "id": "CON:ict-third-party-risk",
+    "name": "Manage ICT third-party and outsourcing risk",
+    "canonical_statement": "Keep a register of ICT third-party arrangements, assess concentration risk, contract the mandated provisions for critical providers, and maintain exit strategies.",
+    "themes": ["ict-resilience"],
+    "members": [
+      {"obligation_id": "OBL:celex/32022R2554#art_28", "jurisdiction": "EU", "role": "primary", "note": "DORA third-party risk"}
+    ]
+  },
+  {
+    "id": "CON:security-of-processing",
+    "name": "Secure personal data proportionately to risk",
+    "canonical_statement": "Implement technical and organisational measures appropriate to the processing risk — encryption and pseudonymisation where appropriate, resilience, and regular effectiveness testing.",
+    "themes": ["privacy", "infosec"],
+    "members": [
+      {"obligation_id": "OBL:celex/32016R0679#art_32", "jurisdiction": "EU", "role": "primary", "note": ""}
+    ]
+  }
+]

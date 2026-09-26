@@ -1,0 +1,4 @@
+name: example-scope
+label: Example scope
+sources:
+  - example-source

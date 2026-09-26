@@ -1,0 +1,423 @@
+[
+  {
+    "id": "BLK-CDD-PROGRAMME",
+    "name": "Customer due diligence programme",
+    "description": "End-to-end identity verification, beneficial-ownership resolution and risk classification at onboarding, with periodic refresh cycles keyed to customer risk.",
+    "capability": "KYC/identity operations",
+    "evidence_artifacts": [
+      "ID&V records",
+      "beneficial ownership register extracts",
+      "risk classification log"
+    ],
+    "satisfies": [
+      {
+        "source_key": "uksi/2017/692",
+        "refs": [
+          "regulation-27",
+          "regulation-28"
+        ]
+      },
+      {
+        "source_key": "celex/32024R1624",
+        "refs": [
+          "art_20"
+        ]
+      }
+    ],
+    "implements_controls": [],
+    "kind": "Process",
+    "purpose": "Verify who the customer is, who owns it and how risky it is, at onboarding and on refresh."
+  },
+  {
+    "id": "BLK-EDD-HIGH-RISK",
+    "name": "Enhanced due diligence track",
+    "description": "Escalation lane for high-risk relationships: senior-management approval, source-of-wealth/funds evidence, tightened monitoring thresholds, PEP and high-risk-country handling.",
+    "capability": "High-risk customer handling",
+    "evidence_artifacts": [
+      "EDD case files",
+      "senior management approvals",
+      "PEP screening results"
+    ],
+    "satisfies": [
+      {
+        "source_key": "uksi/2017/692",
+        "refs": [
+          "regulation-33"
+        ]
+      }
+    ],
+    "implements_controls": [],
+    "kind": "Process",
+    "purpose": "Apply heightened scrutiny and senior sign-off to customers and transactions the risk assessment flags as high risk."
+  },
+  {
+    "id": "BLK-BUSINESS-RISK-ASSESSMENT",
+    "name": "Business-wide risk assessment",
+    "description": "Documented, periodically refreshed assessment of ML/TF exposure across customers, geographies, products, transactions and channels; feeds thresholds used by other blocks.",
+    "capability": "Risk governance",
+    "evidence_artifacts": [
+      "written risk assessment",
+      "board approval minutes"
+    ],
+    "satisfies": [
+      {
+        "source_key": "uksi/2017/692",
+        "refs": [
+          "regulation-18"
+        ]
+      }
+    ],
+    "implements_controls": [
+      {
+        "source_key": "nist/csf-2.0",
+        "ref": "ID.RA-01"
+      }
+    ],
+    "kind": "Document",
+    "purpose": "A documented, board-approved assessment of the money-laundering and terrorist-financing risks the business faces."
+  },
+  {
+    "id": "BLK-AML-GOVERNANCE",
+    "name": "AML governance & internal controls",
+    "description": "Policies, controls and procedures proportionate to the risk assessment: MLRO appointment, screening of relevant employees, independent audit where warranted.",
+    "capability": "Compliance governance",
+    "evidence_artifacts": [
+      "policy suite",
+      "MLRO appointment record",
+      "audit reports"
+    ],
+    "satisfies": [
+      {
+        "source_key": "uksi/2017/692",
+        "refs": [
+          "regulation-19",
+          "regulation-21"
+        ]
+      }
+    ],
+    "implements_controls": [
+      {
+        "source_key": "nist/csf-2.0",
+        "ref": "GV.OC-03"
+      }
+    ],
+    "kind": "Role",
+    "purpose": "A nominated officer / MLRO function with the authority, independence and reporting line to run the AML programme."
+  },
+  {
+    "id": "BLK-RECORDS-RETENTION",
+    "name": "Records & retention regime",
+    "description": "Unified retention schedule and retrieval capability covering CDD records, transaction data and processing-activity records, with defensible deletion at end of retention.",
+    "capability": "Records management",
+    "evidence_artifacts": [
+      "retention schedule",
+      "records of processing activities",
+      "deletion certificates"
+    ],
+    "satisfies": [
+      {
+        "source_key": "uksi/2017/692",
+        "refs": [
+          "regulation-40"
+        ]
+      },
+      {
+        "source_key": "celex/32016R0679",
+        "refs": [
+          "art_30"
+        ]
+      }
+    ],
+    "implements_controls": [
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "au-2"
+      }
+    ],
+    "kind": "System",
+    "purpose": "Keep the records the regime demands, retrievable for the required period and disposed of after it."
+  },
+  {
+    "id": "BLK-PRIVACY-BY-DESIGN",
+    "name": "Privacy-by-design pipeline",
+    "description": "Lawful-basis register, DPIA workflow triggered from product intake, DPO designation, and privacy review gates embedded in the delivery process.",
+    "capability": "Privacy operations",
+    "evidence_artifacts": [
+      "lawful basis register",
+      "completed DPIAs",
+      "privacy review sign-offs"
+    ],
+    "satisfies": [
+      {
+        "source_key": "celex/32016R0679",
+        "refs": [
+          "art_5",
+          "art_6",
+          "art_25",
+          "art_35",
+          "art_37"
+        ]
+      }
+    ],
+    "implements_controls": [],
+    "kind": "Process",
+    "purpose": "Build data-protection requirements into every processing activity from design onwards."
+  },
+  {
+    "id": "BLK-BREACH-RESPONSE",
+    "name": "Breach & incident response (72h-capable)",
+    "description": "Single incident pipeline that classifies personal-data breaches and ICT incidents, drives containment, and hits the GDPR 72-hour and DORA major-incident reporting clocks.",
+    "capability": "Incident response",
+    "evidence_artifacts": [
+      "incident register",
+      "notification records",
+      "post-incident reviews"
+    ],
+    "satisfies": [
+      {
+        "source_key": "celex/32016R0679",
+        "refs": [
+          "art_33"
+        ]
+      },
+      {
+        "source_key": "celex/32022R2554",
+        "refs": [
+          "art_17",
+          "art_19"
+        ]
+      }
+    ],
+    "implements_controls": [
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "ir-4"
+      },
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "ir-6"
+      },
+      {
+        "source_key": "nist/csf-2.0",
+        "ref": "RS.MA-01"
+      }
+    ],
+    "kind": "Workflow",
+    "purpose": "Detect, assess, contain and notify personal-data and security incidents within the statutory windows."
+  },
+  {
+    "id": "BLK-INFOSEC-BASELINE",
+    "name": "Information security baseline",
+    "description": "Core technical control set: account management, least privilege, audit logging, configuration baselines, vulnerability scanning and continuous monitoring.",
+    "capability": "Security engineering",
+    "evidence_artifacts": [
+      "access reviews",
+      "audit logs",
+      "scan reports",
+      "baseline configs"
+    ],
+    "satisfies": [
+      {
+        "source_key": "celex/32016R0679",
+        "refs": [
+          "art_32"
+        ]
+      },
+      {
+        "source_key": "iso/27001-2022",
+        "refs": [
+          "clause-4.3"
+        ],
+        "note": "restricted anchor: refs only"
+      }
+    ],
+    "implements_controls": [
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "ac-2"
+      },
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "ac-6"
+      },
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "cm-2"
+      },
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "ra-5"
+      },
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "si-4"
+      },
+      {
+        "source_key": "nist/csf-2.0",
+        "ref": "PR.AA-01"
+      },
+      {
+        "source_key": "nist/csf-2.0",
+        "ref": "DE.CM-01"
+      }
+    ],
+    "kind": "Configuration",
+    "purpose": "The minimum technical and organisational security measures the organisation must run."
+  },
+  {
+    "id": "BLK-ICT-RESILIENCE",
+    "name": "ICT resilience & third-party register",
+    "description": "DORA-grade operational resilience: ICT risk framework owned by the management body, register of ICT third-party arrangements, concentration analysis and exit plans.",
+    "capability": "Operational resilience",
+    "evidence_artifacts": [
+      "ICT risk framework",
+      "third-party register",
+      "exit strategies",
+      "test reports"
+    ],
+    "satisfies": [
+      {
+        "source_key": "celex/32022R2554",
+        "refs": [
+          "art_5",
+          "art_6",
+          "art_28"
+        ]
+      }
+    ],
+    "implements_controls": [
+      {
+        "source_key": "nist/csf-2.0",
+        "ref": "ID.RA-01"
+      }
+    ],
+    "kind": "Document",
+    "purpose": "The register of ICT third parties and the resilience arrangements the regime requires."
+  },
+  {
+    "id": "BLK-CRYPTO-CUSTODY",
+    "name": "Client asset safeguarding (crypto)",
+    "description": "Segregation of client crypto-assets and funds, custody policy, key-management ceremony, and daily reconciliation against client entitlement records.",
+    "capability": "Asset safeguarding",
+    "evidence_artifacts": [
+      "segregation attestations",
+      "reconciliation reports",
+      "custody policy"
+    ],
+    "satisfies": [
+      {
+        "source_key": "celex/32023R1114",
+        "refs": [
+          "art_62",
+          "art_68",
+          "art_70"
+        ]
+      }
+    ],
+    "implements_controls": [
+      {
+        "source_key": "nist/sp800-53r5",
+        "ref": "ac-3"
+      }
+    ],
+    "kind": "Asset",
+    "purpose": "Client assets held and segregated so they are safeguarded and returnable."
+  },
+  {
+    "id": "BLK-MKT-CLAIMS-REVIEW",
+    "name": "Promotional claims review",
+    "description": "Every promotional claim, including a paid endorser's post, is checked before publication: it reflects the endorser's honest experience, performance claims are substantiated and typical, and nothing in it is deceptive.",
+    "capability": "Marketing compliance review",
+    "evidence_artifacts": [
+      "pre-publication review record",
+      "claim substantiation file"
+    ],
+    "satisfies": [
+      {
+        "source_key": "usc/15/ftc-act-45",
+        "refs": [
+          "sec45(a)"
+        ]
+      },
+      {
+        "source_key": "cfr/16/255",
+        "refs": [
+          "255.1",
+          "255.2"
+        ]
+      }
+    ],
+    "implements_controls": [],
+    "kind": "Process",
+    "purpose": "Stop deceptive or unsubstantiated claims before an endorser publishes them."
+  },
+  {
+    "id": "BLK-MKT-CONNECTION-DISCLOSURE",
+    "name": "Material connection disclosure standard",
+    "description": "The written standard for how a paid or otherwise connected endorser states the relationship: clearly and conspicuously, in the same medium as the endorsement, including compensation for a promoter.",
+    "capability": "Marketing disclosure policy",
+    "evidence_artifacts": [
+      "disclosure standard",
+      "approved disclosure wording"
+    ],
+    "satisfies": [
+      {
+        "source_key": "cfr/16/255",
+        "refs": [
+          "255.5"
+        ]
+      },
+      {
+        "source_key": "cfr/17/ia-marketing",
+        "refs": [
+          "275.206(4)-1"
+        ]
+      }
+    ],
+    "implements_controls": [],
+    "kind": "Document",
+    "purpose": "Make every material connection and every paid endorsement visible to the audience."
+  },
+  {
+    "id": "BLK-MKT-PROMOTER-AGREEMENT",
+    "name": "Written promoter agreement and oversight",
+    "description": "A written agreement with each compensated promoter, approved by a compliance role, and the adviser's oversight of that promoter's testimonials and endorsements.",
+    "capability": "Promoter contracting and oversight",
+    "evidence_artifacts": [
+      "signed promoter agreement",
+      "compliance approval record"
+    ],
+    "satisfies": [
+      {
+        "source_key": "cfr/17/ia-marketing",
+        "refs": [
+          "275.206(4)-1"
+        ]
+      }
+    ],
+    "implements_controls": [],
+    "kind": "Document",
+    "purpose": "Bind each paid promoter to the adviser's marketing obligations and keep the approval on record."
+  },
+  {
+    "id": "BLK-MKT-EXPERT-ENDORSEMENT",
+    "name": "Expert and organisation endorsement qualification",
+    "description": "When an endorser is presented as an expert or as an organisation, the endorser's qualifications and the organisation's collective judgment are verified before use.",
+    "capability": "Endorser qualification",
+    "evidence_artifacts": [
+      "endorser qualification record"
+    ],
+    "satisfies": [
+      {
+        "source_key": "cfr/16/255",
+        "refs": [
+          "255.3",
+          "255.4"
+        ]
+      }
+    ],
+    "implements_controls": [],
+    "kind": "Process",
+    "purpose": "Use expert or organisation endorsements only when the claimed expertise or collective judgment is real."
+  }
+]

@@ -1,0 +1,87 @@
+[
+  {
+    "key": "jurisdictions",
+    "type": "list",
+    "description": "Where the organisation operates or serves customers.",
+    "read_by": [
+      {
+        "source_key": "uksi/2017/692"
+      },
+      {
+        "source_key": "celex/32024R1624"
+      }
+    ]
+  },
+  {
+    "key": "authorisations",
+    "type": "list",
+    "description": "Licenses and regulatory permissions held.",
+    "read_by": [
+      {
+        "source_key": "celex/32023R1114",
+        "refs": [
+          "art_62"
+        ]
+      }
+    ]
+  },
+  {
+    "key": "products",
+    "type": "list",
+    "description": "What the organisation sells or operates.",
+    "read_by": [
+      {
+        "source_key": "uksi/2017/692",
+        "refs": [
+          "regulation-18"
+        ]
+      }
+    ]
+  },
+  {
+    "key": "customer_base",
+    "type": "list",
+    "description": "Retail / professional / SME mix — drives conduct and disclosure duties.",
+    "read_by": []
+  },
+  {
+    "key": "channels",
+    "type": "list",
+    "description": "How customers are reached and served: online / app, telephone, branch, intermediaries, API / white-label, social.",
+    "read_by": []
+  },
+  {
+    "key": "data_footprint",
+    "type": "text",
+    "description": "Scale and nature of personal-data processing (GDPR applicability and DPIA/DPO tests).",
+    "read_by": [
+      {
+        "source_key": "celex/32016R0679",
+        "refs": [
+          "art_35",
+          "art_37"
+        ]
+      }
+    ]
+  },
+  {
+    "key": "crypto_services",
+    "type": "bool",
+    "description": "Provides crypto-asset services (MiCA applicability).",
+    "read_by": [
+      {
+        "source_key": "celex/32023R1114"
+      }
+    ]
+  },
+  {
+    "key": "financial_entity_dora",
+    "type": "bool",
+    "description": "In DORA scope as a financial entity.",
+    "read_by": [
+      {
+        "source_key": "celex/32022R2554"
+      }
+    ]
+  }
+]

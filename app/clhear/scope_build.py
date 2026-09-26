@@ -1,0 +1,278 @@
+# Copyright (C) 2026 Reg42 AI
+# This file is part of CLHEAR. See LICENSE (AGPL-3.0-only).
+"""Build a scoped corpus from L1 up, one layer at a time.
+
+    python -m app.clhear.scope_build --scope <name> [--skip-import]
+        [--profile profile.json] [--publish-release]
+
+Run with ``CLHEAR_SOURCE_SCOPE`` set. The build reads and writes only that
+scope's sources, so the database may also hold the rest of the corpus.
+L1 imports each scoped document through the same adapters, verification and
+acceptance as every other import. Each later layer runs the production
+derivation for that layer — no curated blocks, activities, profiles, concepts,
+register snapshot or alias tables — and records a build (``layer_builds``)
+naming the input revisions it read. A layer whose input changed after that
+input's last build does not run.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+from datetime import datetime, timezone
+
+from sqlalchemy.engine import Engine
+
+from app.clhear import layer_builds
+from app.clhear.l1 import scopes
+
+log = logging.getLogger("clhear.scope_build")
+
+
+def import_sources(engine: Engine, llm, scope: dict) -> dict:
+    from app.clhear.hoststore import registry_entries
+    from app.clhear.l1 import source_registry
+    from app.clhear.workers import AdapterRunIncomplete, run_adapter_fleet
+
+    keys = list(scope.get("sources") or [])
+    source_registry.install(registry_entries(engine, keys))
+    source_registry.seed(engine)
+    groups: dict[str, list[str]] = {}
+    declared = scope.get("imports") or {}
+    if declared:
+        groups = {adapter: list(adapter_keys) for adapter, adapter_keys in declared.items()}
+    else:
+        for entry in source_registry.S:
+            if entry.get("enabled", True):
+                groups.setdefault(entry["adapter"], []).append(entry["key"])
+    lanes = {}
+    for adapter, adapter_keys in groups.items():
+        try:
+            result = run_adapter_fleet(engine, adapter, source_keys=list(adapter_keys), discover=False, trigger="scope_build",
+                                       event_key=f"scope-build:{scopes.active_name()}:{adapter}:{datetime.now(timezone.utc).date()}")
+            lanes[adapter] = {"statuses": result.get("statuses"), "acceptance": result.get("acceptance")}
+        except AdapterRunIncomplete as exc:
+            # Verified imports stay in force; acceptance findings are recorded, not hidden.
+            lanes[adapter] = {"incomplete": str(exc)[:300], "source_keys": list(adapter_keys)}
+            from app.clhear import notify
+
+            for key in adapter_keys:
+                notify.emit(engine, "source.failed", {
+                    "source_key": key, "adapter": adapter, "error": str(exc)[:300],
+                })
+    return lanes
+
+
+def derive_l2(engine: Engine, llm) -> dict:
+    from app.clhear.l2.consolidate import draft_and_propose
+    from app.clhear.l2.dedupe import consolidate
+    from app.clhear.l2.extract import run_extraction
+    from app.clhear.l2.review import review_obligations
+    from app.clhear.l2.structured import refine_structured
+    from app.clhear.l2.triage import triage_duties
+
+    # One source at a time: an unscoped extraction stales every obligation it
+    # did not just derive, including rows that belong to other sources.
+    chosen = scopes.source_keys()
+    extraction = [run_extraction(engine, source_key=key) for key in chosen] if chosen else run_extraction(engine)
+    return {"extraction": extraction, "triage": triage_duties(engine, llm),
+            "structured": refine_structured(engine, llm), "consolidation": draft_and_propose(engine, llm),
+            "dedupe": consolidate(engine), "review": review_obligations(engine, llm)}
+
+
+def derive_l3(engine: Engine, llm) -> dict:
+    from app.clhear.curated import seed_data_model
+    from app.clhear.l3.characterize import characterize
+    from app.clhear.l3.decompose import decompose
+    from app.clhear.l3.generate import generate_blocks
+    from app.clhear.l3.harmonize import harmonize
+
+    return {"data_model": seed_data_model(engine), "generated": generate_blocks(engine, llm),
+            "decomposition": decompose(engine), "harmonisation": harmonize(engine),
+            "characterisation": characterize(engine, llm)}
+
+
+def derive_l4(engine: Engine, llm, profiles: list[dict]) -> dict:
+    from app.clhear.l4.licenses import extract_licenses
+    from app.clhear.l4.ontology import build_ontology
+    from app.clhear.l4.predicates import extract_predicates
+    from app.clhear.l4.validate import create_profile, revalidate_profiles
+
+    licenses = extract_licenses(engine, llm)
+    ontology = build_ontology(engine, check_registers=False)
+    predicates = extract_predicates(engine, llm)
+    stored = []
+    for profile in profiles:
+        # Tenant-submitted self-descriptions, validated against the derived ontology.
+        row = create_profile(engine, profile["attributes"], name=profile.get("name", ""), source="api", allow_invalid=True)
+        stored.append({"id": row["id"], "status": row.get("status"), "name": profile.get("name", "")})
+    return {"licenses": licenses, "ontology": {"version": ontology["version"], "merged": ontology["license_types_merged"]},
+            "predicates": predicates, "profiles": stored, "revalidation": revalidate_profiles(engine)}
+
+
+def derive_l5(engine: Engine, llm) -> dict:
+    from app.clhear.l5.check import check_junction
+    from app.clhear.l5.map import map_activities
+
+    mapping = map_activities(engine, llm)
+    junction = check_junction(engine)
+    return {"mapping": mapping, "junction": {k: junction[k] for k in ("activities", "edges", "ok")},
+            "orphans": len(junction["orphans"]), "dangling": len(junction["dangling"])}
+
+
+def derive_l6(engine: Engine, llm, profile_ids: list[str] | None = None) -> dict:
+    from app.clhear.fleets import compose_stored_profiles
+    from app.clhear.l6 import composer
+    from app.clhear.l6.explain import refine_explanations
+
+    # A scoped build composes the profiles it just stored. Profiles already in
+    # the database keep the blueprints they have.
+    composed = compose_stored_profiles(engine, profile_ids=profile_ids if scopes.active() else None)
+    direct = []
+    for pid in profile_ids or []:
+        try:
+            direct.append(composer.compose_for_profile(engine, pid, requested_by="l6.compose:scope"))
+        except KeyError:
+            continue
+    explained = []
+    with engine.connect() as conn:
+        current = [composer.get_blueprint(conn, r["blueprint_id"]) for r in composer.list_blueprints(conn, status="current", limit=20)]
+    for bp in current:
+        if bp and bp["composition"].get("items"):
+            explained.append(refine_explanations(engine, llm, dict(bp["composition"], blueprint_id=bp["blueprint_id"])))
+    return {"composed": composed, "direct": [row.get("blueprint_id") for row in direct], "explained": len(explained)}
+
+
+def derive_l7(engine: Engine, llm) -> dict:
+    from app.clhear.l7 import enforcement, score
+
+    return {"events": enforcement.ingest_events(engine), "links": enforcement.link_events(engine, llm),
+            "calibration": {k: v for k, v in score.calibrate(engine).items() if k in ("status", "id", "held_out_year")},
+            "obligation_scores": {k: v for k, v in score.score_obligations(engine).items() if k != "bands"}}
+
+
+def item_priority(engine: Engine) -> dict:
+    from app.clhear.l7 import score
+
+    return score.score_items(engine)
+
+
+def derive_l8(engine: Engine, llm) -> dict:
+    from app.clhear.l8.reference import reference_rows
+
+    rows = reference_rows(engine)
+    return {"reference_rows": len(rows), "mapped_to_blocks": sum(1 for r in rows if r["block_id"])}
+
+
+def _counts(engine: Engine, layer: str) -> dict:
+    with engine.connect() as conn:
+        if layer == "L8":
+            from app.clhear.l8.reference import derived_reference_rows
+
+            return {"reference_rows": len(derived_reference_rows(conn))}
+        return {t.name: len(layer_builds._rows(conn, t)) for t in layer_builds._tables(layer)}
+
+
+def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict] | None = None,
+          layers: tuple[str, ...] = layer_builds.ORDER) -> dict:
+    name = scopes.active_name()
+    if not name:
+        raise RuntimeError(f"Set {scopes.SCOPE_ENV}; a scope build never runs against the full registry")
+    try:
+        scope = scopes.get(name)
+    except KeyError as exc:
+        raise RuntimeError(str(exc)) from exc
+    held: dict = {"profiles": []}
+
+    def run_l4() -> dict:
+        detail = derive_l4(engine, llm, profiles or [])
+        held["profiles"] = [p["id"] for p in detail.get("profiles") or []]
+        return detail
+
+    steps = {
+        "L1": (lambda: {"skipped": "import"}) if skip_import else (lambda: import_sources(engine, llm, scope)),
+        "L2": lambda: derive_l2(engine, llm), "L3": lambda: derive_l3(engine, llm),
+        "L4": run_l4, "L5": lambda: derive_l5(engine, llm),
+        "L6": lambda: derive_l6(engine, llm, held["profiles"]), "L7": lambda: derive_l7(engine, llm),
+        "L8": lambda: derive_l8(engine, llm),
+    }
+    report = {"scope": name, "layers": {}}
+    for layer in layer_builds.ORDER:
+        if layer not in layers:
+            continue
+        with engine.connect() as conn:
+            inputs = layer_builds.check_inputs(conn, layer, name)
+        started = datetime.now(timezone.utc)
+        detail = steps[layer]()
+        built = layer_builds.record(engine, layer, scope=name, inputs=inputs, counts=_counts(engine, layer),
+                                    steps=detail, started_at=started)
+        report["layers"][layer] = {"revision": built["revision"], "inputs": inputs, "counts": built["counts"]}
+        log.info("built %s %s from %s", layer, built["revision"][:12], {k: v[:12] for k, v in inputs.items()})
+    if "L7" in report["layers"]:
+        view = "L7 item priority"
+        with engine.connect() as conn:
+            inputs = layer_builds.check_inputs(conn, view, name)
+        report["views"] = {view: {"inputs": inputs, "item_scores": item_priority(engine)}}
+    report["profiles"] = held["profiles"]
+    return report
+
+
+def _router(engine: Engine, *, allow_fake: bool = False):
+    from app.clhear.platform.router import Router, build_providers
+
+    providers = build_providers()
+    if not providers:
+        raise RuntimeError("No model provider is configured")
+    if set(providers) == {"fake"} and not allow_fake:
+        raise RuntimeError("A live run needs anthropic, openai_compatible, or bedrock")
+    return Router(engine, providers=providers)
+
+
+def _read_profile(location: str) -> dict:
+    if location.startswith("s3://"):
+        import boto3
+
+        bucket, _, key = location[len("s3://"):].partition("/")
+        return json.loads(boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"].read())
+    with open(location) as fh:
+        return json.load(fh)
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m app.clhear.scope_build")
+    parser.add_argument("--scope", required=True)
+    parser.add_argument("--skip-import", action="store_true")
+    parser.add_argument("--layers", default=",".join(layer_builds.ORDER))
+    parser.add_argument("--profile", action="append", default=[],
+                        help="JSON file or s3:// object of a tenant-submitted L4 profile")
+    parser.add_argument("--publish-release", action="store_true")
+    parser.add_argument("--refresh-viewer", action="store_true",
+                        help="Ask L0 to republish the viewer snapshot after the build")
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    import os
+
+    if os.environ.get(scopes.SCOPE_ENV, "") != args.scope:
+        parser.error(f"{scopes.SCOPE_ENV} must equal --scope before the registry loads")
+    logging.basicConfig(level=logging.INFO)
+    from app.clhear.db import get_engine, run_migrations
+
+    engine = get_engine()
+    run_migrations(engine)
+    profiles = [_read_profile(location) for location in args.profile]
+    report = build(engine, _router(engine), skip_import=args.skip_import, profiles=profiles,
+                   layers=tuple(x.strip() for x in args.layers.split(",") if x.strip()))
+    if args.publish_release:
+        from app.clhear.scope_release import publish
+
+        report["release"] = publish(engine, args.scope)
+    if args.refresh_viewer:
+        from app.clhear.l1.viewer_snapshot import request_refresh
+
+        report["viewer"] = request_refresh(engine, reason="scope-build")
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

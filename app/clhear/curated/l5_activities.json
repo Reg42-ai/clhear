@@ -1,0 +1,315 @@
+[
+  {
+    "id": "ACT-ONBOARD-CUSTOMER",
+    "side": "business",
+    "action_type": "onboarding",
+    "name": "Onboard a customer",
+    "description": "Open a business relationship: collect identity data, verify it, classify risk, and register the lawful basis for the personal data processed.",
+    "business_owner": "Growth / Operations",
+    "implied_by": "*",
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-27", "regulation-28"]}, "when": {"jurisdictions": "UK"}},
+      {"anchor": {"source_key": "celex/32024R1624", "refs": ["art_20"]}, "when": {"jurisdictions": "EU"}},
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_5", "art_6"]}, "when": {"data_footprint": "*"}}
+    ]
+  },
+  {
+    "id": "ACT-HANDLE-ORDERS",
+    "side": "business",
+    "action_type": "order_handling",
+    "name": "Handle client orders",
+    "description": "Receive, route and execute client orders in securities, derivatives and crypto-assets.",
+    "business_owner": "Trading / Brokerage",
+    "implied_by": ["PRD:equities-brokerage", "PRD:derivatives-cfds", "PRD:listed-options-futures", "PRD:crypto-brokerage", "PRD:crypto-exchange"],
+    "triggers": [
+      {"anchor": {"source_key": "fca/handbook/COBS", "refs": ["COBS-11.2A"]}, "when": {"jurisdictions": "UK", "products": ["equities brokerage", "CFDs and leveraged derivatives"]}},
+      {"anchor": {"source_key": "celex/32014L0065", "refs": ["art_27"]}, "when": {"jurisdictions": "EU", "products": ["equities brokerage", "CFDs and leveraged derivatives"]}}
+    ]
+  },
+  {
+    "id": "ACT-MARKET-PRODUCTS",
+    "side": "business",
+    "action_type": "marketing",
+    "name": "Market products and services",
+    "description": "Financial promotions, onboarding funnels, affiliate and social campaigns aimed at clients and prospects.",
+    "business_owner": "Marketing",
+    "implied_by": ["PRD:equities-brokerage", "PRD:derivatives-cfds", "PRD:crypto-brokerage", "PRD:crypto-exchange", "PRD:e-money-issuance", "PRD:payment-accounts", "PRD:card-programmes", "PRD:investment-advice"],
+    "triggers": [
+      {"anchor": {"source_key": "fca/handbook/COBS", "refs": ["COBS-4.2"]}, "when": {"jurisdictions": "UK", "customer_base": ["retail"]}},
+      {"anchor": {"source_key": "celex/32014L0065", "refs": ["art_24"]}, "when": {"jurisdictions": "EU", "customer_base": ["retail"]}}
+    ]
+  },
+  {
+    "id": "ACT-MOVE-CLIENT-FUNDS",
+    "side": "business",
+    "action_type": "payments",
+    "name": "Take deposits and pay withdrawals",
+    "description": "Accept client deposits, hold client money and e-money balances, and pay out withdrawals.",
+    "business_owner": "Payments operations",
+    "implied_by": ["PRD:client-money-holding", "PRD:payment-accounts", "PRD:e-money-issuance", "PRD:card-programmes", "PRD:deposits"],
+    "triggers": [
+      {"anchor": {"source_key": "fca/handbook/CASS", "refs": ["CASS-7.13", "CASS-7.15"]}, "when": {"jurisdictions": "UK", "products": ["client money holding"]}},
+      {"anchor": {"source_key": "uksi/2011/99", "refs": ["regulation-20"]}, "when": {"jurisdictions": "UK", "products": ["e-money issuance"]}},
+      {"anchor": {"source_key": "uksi/2017/752", "refs": ["regulation-23"]}, "when": {"jurisdictions": "UK", "products": ["payment accounts"]}}
+    ]
+  },
+  {
+    "id": "ACT-CUSTODY-CLIENT-ASSETS",
+    "side": "business",
+    "action_type": "custody",
+    "name": "Hold client assets in custody",
+    "description": "Safeguard client securities and collateral, including assets lent or pledged under margin arrangements.",
+    "business_owner": "Custody operations",
+    "implied_by": ["PRD:custody", "PRD:securities-lending", "PRD:margin-lending"],
+    "triggers": [
+      {"anchor": {"source_key": "fca/handbook/CASS", "refs": ["CASS-6.2", "CASS-6.6"]}, "when": {"jurisdictions": "UK", "products": ["custody of client assets"]}},
+      {"anchor": {"source_key": "celex/32017L0593", "refs": ["art_2"]}, "when": {"jurisdictions": "EU", "products": ["custody of client assets"]}}
+    ]
+  },
+  {
+    "id": "ACT-CUSTODY-CRYPTO",
+    "side": "business",
+    "action_type": "custody",
+    "name": "Custody client crypto-assets",
+    "description": "Hold, or control the means of access to, clients' crypto-assets and fiat funds.",
+    "business_owner": "Custody operations",
+    "implied_by": ["PRD:crypto-custody"],
+    "triggers": [
+      {"anchor": {"source_key": "celex/32023R1114", "refs": ["art_62", "art_68", "art_70"]}, "when": {"crypto_services": true}}
+    ]
+  },
+  {
+    "id": "ACT-ADVISE-AND-MANAGE",
+    "side": "business",
+    "action_type": "advice",
+    "name": "Advise clients and manage portfolios",
+    "description": "Personal recommendations, discretionary portfolio management and investment research for clients.",
+    "business_owner": "Wealth / Advisory",
+    "implied_by": ["PRD:investment-advice", "PRD:portfolio-management", "PRD:research"],
+    "triggers": [
+      {"anchor": {"source_key": "fca/handbook/COBS", "refs": ["COBS-9A.2"]}, "when": {"jurisdictions": "UK", "products": ["investment advice", "portfolio management"]}},
+      {"anchor": {"source_key": "celex/32014L0065", "refs": ["art_25"]}, "when": {"jurisdictions": "EU", "products": ["investment advice", "portfolio management"]}}
+    ]
+  },
+  {
+    "id": "ACT-PROCESS-PERSONAL-DATA",
+    "side": "business",
+    "action_type": "data_processing",
+    "name": "Process personal data",
+    "description": "Any collection, storage, use or sharing of personal data across products and internal systems.",
+    "business_owner": "Every team (data owner registry)",
+    "implied_by": "*",
+    "triggers": [
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_5", "art_6", "art_30", "art_32"]}, "when": {"data_footprint": "*"}},
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_35", "art_37"]}, "when": {"data_footprint": "large-scale personal data"}}
+    ]
+  },
+  {
+    "id": "ACT-OUTSOURCE-ICT",
+    "side": "business",
+    "action_type": "outsourcing",
+    "name": "Outsource ICT services",
+    "description": "Contract cloud and other ICT services supporting critical or important functions.",
+    "business_owner": "Technology / Procurement",
+    "implied_by": "*",
+    "triggers": [
+      {"anchor": {"source_key": "celex/32022R2554", "refs": ["art_5", "art_6", "art_28"]}, "when": {"financial_entity_dora": true}}
+    ]
+  },
+  {
+    "id": "ACT-SCREEN-CUSTOMERS",
+    "side": "compliance",
+    "action_type": "screen",
+    "name": "Screen and verify customers",
+    "description": "Identify and verify customers and beneficial owners, screen against sanctions and PEP lists, and classify the relationship's risk before and during onboarding.",
+    "business_owner": "Financial crime operations",
+    "operates": ["BLK-CDD-PROGRAMME"],
+    "mitigates": [
+      {"business": "ACT-ONBOARD-CUSTOMER", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-27", "regulation-28"]}},
+      {"business": "ACT-ONBOARD-CUSTOMER", "anchor": {"source_key": "celex/32024R1624", "refs": ["art_20"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-27", "regulation-28"]}, "when": {"jurisdictions": "UK"}},
+      {"anchor": {"source_key": "celex/32024R1624", "refs": ["art_20"]}, "when": {"jurisdictions": "EU"}}
+    ]
+  },
+  {
+    "id": "ACT-HIGH-RISK-RELATIONSHIPS",
+    "side": "compliance",
+    "action_type": "investigate",
+    "name": "Handle high-risk relationships",
+    "description": "Manage relationships flagged high-risk: PEPs, high-risk third countries, complex structures.",
+    "business_owner": "Compliance",
+    "operates": ["BLK-EDD-HIGH-RISK"],
+    "mitigates": [
+      {"business": "ACT-ONBOARD-CUSTOMER", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-33"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-33"]}, "when": {"jurisdictions": "UK"}}
+    ]
+  },
+  {
+    "id": "ACT-MONITOR-TRANSACTIONS",
+    "side": "compliance",
+    "action_type": "monitor",
+    "name": "Monitor transactions",
+    "description": "Screen and scrutinise transaction flows against the customer's expected profile.",
+    "business_owner": "Financial crime operations",
+    "operates": ["BLK-CDD-PROGRAMME"],
+    "mitigates": [
+      {"business": "ACT-MOVE-CLIENT-FUNDS", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-28"]}},
+      {"business": "ACT-HANDLE-ORDERS", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-28"]}},
+      {"business": "ACT-CUSTODY-CRYPTO", "anchor": {"source_key": "celex/32024R1624", "refs": ["art_20"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-28"]}, "when": {"jurisdictions": "UK"}}
+    ]
+  },
+  {
+    "id": "ACT-TRAIN-STAFF",
+    "side": "compliance",
+    "action_type": "train",
+    "name": "Train staff",
+    "description": "Make relevant employees aware of the law on money laundering and data protection and train them to recognise and handle what they see.",
+    "business_owner": "Compliance / People",
+    "operates": ["BLK-AML-GOVERNANCE"],
+    "mitigates": [
+      {"business": "ACT-ONBOARD-CUSTOMER", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-24"]}},
+      {"business": "ACT-PROCESS-PERSONAL-DATA", "anchor": {"source_key": "celex/32016R0679", "refs": ["art_39"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-24"]}, "when": {"jurisdictions": "UK"}},
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_39"]}, "when": {"data_footprint": "large-scale personal data"}}
+    ]
+  },
+  {
+    "id": "ACT-ATTEST-GOVERNANCE",
+    "side": "compliance",
+    "action_type": "attest",
+    "name": "Approve and attest the programme",
+    "description": "Senior management approves policies, controls and procedures, appoints the officers the rules require and signs off the programme's operation.",
+    "business_owner": "Board / MLRO",
+    "operates": ["BLK-AML-GOVERNANCE"],
+    "mitigates": [
+      {"business": "ACT-ONBOARD-CUSTOMER", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-19", "regulation-21"]}},
+      {"business": "ACT-PROCESS-PERSONAL-DATA", "anchor": {"source_key": "celex/32016R0679", "refs": ["art_37"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-19", "regulation-21"]}, "when": {"jurisdictions": "UK"}},
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_37"]}, "when": {"data_footprint": "large-scale personal data"}}
+    ]
+  },
+  {
+    "id": "ACT-REPORT-TO-AUTHORITIES",
+    "side": "compliance",
+    "action_type": "report",
+    "name": "Report to authorities",
+    "description": "Make the disclosures and file the reports the rules require: suspicious activity reports through the nominated officer, regulatory returns and notifications of material changes.",
+    "business_owner": "MLRO / Regulatory reporting",
+    "operates": ["BLK-AML-GOVERNANCE"],
+    "mitigates": [
+      {"business": "ACT-MOVE-CLIENT-FUNDS", "anchor": {"source_key": "ukpga/2002/29", "refs": ["section-330", "section-331"]}},
+      {"business": "ACT-HANDLE-ORDERS", "anchor": {"source_key": "ukpga/2002/29", "refs": ["section-330", "section-331"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "ukpga/2002/29", "refs": ["section-330", "section-331"]}, "when": {"jurisdictions": "UK"}},
+      {"anchor": {"source_key": "cfr/17/240-bd", "refs": ["240.17a-8"]}, "when": {"jurisdictions": "US"}}
+    ]
+  },
+  {
+    "id": "ACT-RESPOND-TO-INCIDENTS",
+    "side": "compliance",
+    "action_type": "notify",
+    "name": "Respond to security & data incidents",
+    "description": "Detect, contain, classify and notify security incidents, data breaches and ICT disruptions.",
+    "business_owner": "Security / CISO",
+    "operates": ["BLK-BREACH-RESPONSE"],
+    "mitigates": [
+      {"business": "ACT-PROCESS-PERSONAL-DATA", "anchor": {"source_key": "celex/32016R0679", "refs": ["art_33"]}},
+      {"business": "ACT-OUTSOURCE-ICT", "anchor": {"source_key": "celex/32022R2554", "refs": ["art_17", "art_19"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_33"]}, "when": {"data_footprint": "*"}},
+      {"anchor": {"source_key": "celex/32022R2554", "refs": ["art_17", "art_19"]}, "when": {"financial_entity_dora": true}}
+    ]
+  },
+  {
+    "id": "ACT-SECURE-SYSTEMS",
+    "side": "compliance",
+    "action_type": "control",
+    "name": "Secure systems and data",
+    "description": "Implement and maintain the technical and organisational measures that keep personal data and client systems secure.",
+    "business_owner": "Security / CISO",
+    "operates": ["BLK-INFOSEC-BASELINE", "BLK-PRIVACY-BY-DESIGN"],
+    "mitigates": [
+      {"business": "ACT-PROCESS-PERSONAL-DATA", "anchor": {"source_key": "celex/32016R0679", "refs": ["art_25", "art_32"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_25", "art_32"]}, "when": {"data_footprint": "*"}}
+    ]
+  },
+  {
+    "id": "ACT-TEST-ICT-RESILIENCE",
+    "side": "compliance",
+    "action_type": "test",
+    "name": "Test ICT resilience and third parties",
+    "description": "Maintain the ICT risk framework and register of third-party arrangements, and test recovery and resilience.",
+    "business_owner": "Technology risk",
+    "operates": ["BLK-ICT-RESILIENCE"],
+    "mitigates": [
+      {"business": "ACT-OUTSOURCE-ICT", "anchor": {"source_key": "celex/32022R2554", "refs": ["art_5", "art_6", "art_28"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "celex/32022R2554", "refs": ["art_5", "art_6", "art_28"]}, "when": {"financial_entity_dora": true}}
+    ]
+  },
+  {
+    "id": "ACT-SAFEGUARD-CRYPTO",
+    "side": "compliance",
+    "action_type": "control",
+    "name": "Safeguard client crypto-assets",
+    "description": "Segregate client crypto-assets and funds, keep the register of positions and control access to keys.",
+    "business_owner": "Custody operations / Compliance",
+    "operates": ["BLK-CRYPTO-CUSTODY"],
+    "mitigates": [
+      {"business": "ACT-CUSTODY-CRYPTO", "anchor": {"source_key": "celex/32023R1114", "refs": ["art_62", "art_68", "art_70"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "celex/32023R1114", "refs": ["art_62", "art_68", "art_70"]}, "when": {"crypto_services": true}}
+    ]
+  },
+  {
+    "id": "ACT-KEEP-RECORDS",
+    "side": "compliance",
+    "action_type": "record",
+    "name": "Keep records",
+    "description": "Retain CDD, transaction and processing records for their statutory periods and delete defensibly afterwards.",
+    "business_owner": "Compliance / Data governance",
+    "operates": ["BLK-RECORDS-RETENTION"],
+    "mitigates": [
+      {"business": "ACT-ONBOARD-CUSTOMER", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-40"]}},
+      {"business": "ACT-PROCESS-PERSONAL-DATA", "anchor": {"source_key": "celex/32016R0679", "refs": ["art_30"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-40"]}, "when": {"jurisdictions": "UK"}},
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_30"]}, "when": {"data_footprint": "*"}}
+    ]
+  },
+  {
+    "id": "ACT-RUN-RISK-ASSESSMENT",
+    "side": "compliance",
+    "action_type": "assess",
+    "name": "Run the business risk assessment",
+    "description": "Produce and refresh the business-wide ML/TF risk assessment and the data protection impact assessments that calibrate the rest of the programme.",
+    "business_owner": "MLRO / DPO",
+    "operates": ["BLK-BUSINESS-RISK-ASSESSMENT", "BLK-PRIVACY-BY-DESIGN"],
+    "mitigates": [
+      {"business": "ACT-ONBOARD-CUSTOMER", "anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-18"]}},
+      {"business": "ACT-PROCESS-PERSONAL-DATA", "anchor": {"source_key": "celex/32016R0679", "refs": ["art_35"]}}
+    ],
+    "triggers": [
+      {"anchor": {"source_key": "uksi/2017/692", "refs": ["regulation-18", "regulation-19", "regulation-21"]}, "when": {"jurisdictions": "UK"}},
+      {"anchor": {"source_key": "celex/32016R0679", "refs": ["art_35"]}, "when": {"data_footprint": "large-scale personal data"}}
+    ]
+  }
+]

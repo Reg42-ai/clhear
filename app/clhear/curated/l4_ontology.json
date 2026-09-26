@@ -1,0 +1,1353 @@
+{
+  "version": "2026-09-12",
+  "scope": "UK / EU / US broker regimes plus the payments, e-money and crypto authorisations the starter corpus already reads",
+  "registers": [
+    {
+      "key": "fca_register",
+      "name": "FCA Financial Services Register",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "url": "https://register.fca.org.uk/",
+      "api": "https://register.fca.org.uk/services/V0.1/Firm/",
+      "taxonomy": "Part 4A permissions (Regulated Activities Order 2001) + CASS client-money flags"
+    },
+    {
+      "key": "esma_registers",
+      "name": "ESMA registers (MiFID investment firms, MiCA CASPs)",
+      "jurisdiction": "EU",
+      "regulator": "ESMA / NCAs",
+      "url": "https://registers.esma.europa.eu/publication/",
+      "api": "https://registers.esma.europa.eu/publication/searchRegister?core=esma_registers_upreg",
+      "taxonomy": "MiFID II Annex I Section A services / Section B ancillary services; MiCA Art. 3 crypto-asset services"
+    },
+    {
+      "key": "eba_registers",
+      "name": "EBA register of payment and e-money institutions",
+      "jurisdiction": "EU",
+      "regulator": "EBA / NCAs",
+      "url": "https://euclid.eba.europa.eu/register/",
+      "api": "https://euclid.eba.europa.eu/register/api/search",
+      "taxonomy": "PSD2 Annex I payment services; EMD2 e-money issuance"
+    },
+    {
+      "key": "sec_finra",
+      "name": "SEC / FINRA registers (BrokerCheck, IAPD, EDGAR)",
+      "jurisdiction": "US",
+      "regulator": "SEC / FINRA",
+      "url": "https://brokercheck.finra.org/",
+      "api": "https://api.brokercheck.finra.org/search/firm",
+      "taxonomy": "Exchange Act §15(b) broker-dealer registration; Advisers Act §203; FINRA membership"
+    },
+    {
+      "key": "fincen_msb",
+      "name": "FinCEN MSB Registrant Search",
+      "jurisdiction": "US",
+      "regulator": "FinCEN",
+      "url": "https://www.fincen.gov/msb-registrant-search",
+      "api": "https://www.fincen.gov/msb-state-selector",
+      "taxonomy": "31 CFR 1022.380 money services business registration"
+    },
+    {
+      "key": "nfa_basic",
+      "name": "NFA BASIC (CFTC registrants)",
+      "jurisdiction": "US",
+      "regulator": "CFTC / NFA",
+      "url": "https://www.nfa.futures.org/basicnet/",
+      "api": "https://www.nfa.futures.org/basicnet/",
+      "taxonomy": "Commodity Exchange Act registrations (FCM, IB, CPO, CTA)"
+    }
+  ],
+  "jurisdictions": [
+    {
+      "code": "UK",
+      "name": "United Kingdom",
+      "regulators": [
+        "FCA",
+        "PRA",
+        "HM Treasury / OFSI"
+      ]
+    },
+    {
+      "code": "EU",
+      "name": "European Union",
+      "regulators": [
+        "ESMA",
+        "EBA",
+        "national competent authorities"
+      ]
+    },
+    {
+      "code": "US",
+      "name": "United States",
+      "regulators": [
+        "SEC",
+        "FINRA",
+        "FinCEN",
+        "CFTC / NFA",
+        "state regulators"
+      ]
+    }
+  ],
+  "licences": [
+    {
+      "id": "LIC:UK:mifid-investment-firm",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "UK MiFID investment firm (Part 4A permission)",
+      "regime": "Financial Services and Markets Act 2000, Part 4A",
+      "register": "fca_register",
+      "register_ref": "Part 4A permission",
+      "aliases": [
+        "MiFID investment firm (UK)",
+        "FCA-authorised investment firm"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:dealing-in-investments-as-agent",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Dealing in investments as agent",
+      "regime": "Regulated Activities Order 2001, art. 21",
+      "register": "fca_register",
+      "register_ref": "Dealing in investments as agent",
+      "aliases": [],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:dealing-in-investments-as-principal",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Dealing in investments as principal",
+      "regime": "Regulated Activities Order 2001, art. 14",
+      "register": "fca_register",
+      "register_ref": "Dealing in investments as principal",
+      "aliases": [
+        "market making"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:arranging-deals-in-investments",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Arranging deals in investments",
+      "regime": "Regulated Activities Order 2001, art. 25",
+      "register": "fca_register",
+      "register_ref": "Arranging (bringing about) deals in investments",
+      "aliases": [],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:safeguarding-and-administering-investments",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Safeguarding and administering investments (custody)",
+      "regime": "Regulated Activities Order 2001, art. 40",
+      "register": "fca_register",
+      "register_ref": "Safeguarding and administration of assets (without arranging)",
+      "aliases": [
+        "custody permission"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:client-money-permission",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Client money permission (CASS)",
+      "regime": "FCA Handbook CASS 7; Part 4A requirement",
+      "register": "fca_register",
+      "register_ref": "Able to hold and control client money",
+      "aliases": [
+        "CASS permission",
+        "holding client money"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:advising-on-investments",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Advising on investments",
+      "regime": "Regulated Activities Order 2001, art. 53",
+      "register": "fca_register",
+      "register_ref": "Advising on investments (except on Pension Transfers and Pension Opt Outs)",
+      "aliases": [
+        "investment advice permission"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:managing-investments",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Managing investments",
+      "regime": "Regulated Activities Order 2001, art. 37",
+      "register": "fca_register",
+      "register_ref": "Managing investments",
+      "aliases": [
+        "discretionary portfolio management permission"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:e-money-institution",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "E-money institution (Electronic Money Regulations 2011)",
+      "regime": "Electronic Money Regulations 2011",
+      "register": "fca_register",
+      "register_ref": "Authorised electronic money institution",
+      "aliases": [
+        "EMI",
+        "authorised e-money institution"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:payment-institution",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Authorised payment institution (Payment Services Regulations 2017)",
+      "regime": "Payment Services Regulations 2017",
+      "register": "fca_register",
+      "register_ref": "Authorised payment institution",
+      "aliases": [
+        "API",
+        "payment institution (UK)"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:UK:cryptoasset-registration",
+      "jurisdiction": "UK",
+      "regulator": "FCA",
+      "name": "Cryptoasset business registration (MLRs 2017)",
+      "regime": "Money Laundering Regulations 2017, regs 56-58",
+      "register": "fca_register",
+      "register_ref": "Cryptoasset exchange provider / custodian wallet provider",
+      "aliases": [
+        "FCA crypto registration"
+      ],
+      "clause_anchors": [
+        {
+          "source_key": "uksi/2017/692",
+          "ref": "regulation-56"
+        }
+      ]
+    },
+    {
+      "id": "LIC:EU:mifid-investment-firm",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "MiFID II investment firm authorisation",
+      "regime": "Directive 2014/65/EU, art. 5",
+      "register": "esma_registers",
+      "register_ref": "Investment firm (MiFID II)",
+      "aliases": [
+        "MiFID investment firm",
+        "investment firm (EU)"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:mifid-a1-reception-transmission",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "MiFID II A(1) Reception and transmission of orders",
+      "regime": "Directive 2014/65/EU, Annex I Section A(1)",
+      "register": "esma_registers",
+      "register_ref": "A1",
+      "aliases": [
+        "RTO"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:mifid-a2-execution",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "MiFID II A(2) Execution of orders on behalf of clients",
+      "regime": "Directive 2014/65/EU, Annex I Section A(2)",
+      "register": "esma_registers",
+      "register_ref": "A2",
+      "aliases": [
+        "execution of orders"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:mifid-a3-dealing-on-own-account",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "MiFID II A(3) Dealing on own account",
+      "regime": "Directive 2014/65/EU, Annex I Section A(3)",
+      "register": "esma_registers",
+      "register_ref": "A3",
+      "aliases": [
+        "own account dealing"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:mifid-a4-portfolio-management",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "MiFID II A(4) Portfolio management",
+      "regime": "Directive 2014/65/EU, Annex I Section A(4)",
+      "register": "esma_registers",
+      "register_ref": "A4",
+      "aliases": [],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:mifid-a5-investment-advice",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "MiFID II A(5) Investment advice",
+      "regime": "Directive 2014/65/EU, Annex I Section A(5)",
+      "register": "esma_registers",
+      "register_ref": "A5",
+      "aliases": [],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:mifid-b1-safekeeping",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "MiFID II B(1) Safekeeping and administration of financial instruments",
+      "regime": "Directive 2014/65/EU, Annex I Section B(1)",
+      "register": "esma_registers",
+      "register_ref": "B1",
+      "aliases": [
+        "custody (EU)",
+        "safekeeping"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:casp",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "CASP (MiCA)",
+      "regime": "Regulation (EU) 2023/1114, art. 59",
+      "register": "esma_registers",
+      "register_ref": "Crypto-asset service provider",
+      "aliases": [
+        "crypto-asset service provider",
+        "MiCA CASP"
+      ],
+      "clause_anchors": [
+        {
+          "source_key": "celex/32023R1114",
+          "ref": "art_59"
+        }
+      ]
+    },
+    {
+      "id": "LIC:EU:payment-institution",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "Payment institution (PSD2)",
+      "regime": "Directive (EU) 2015/2366, art. 11",
+      "register": "eba_registers",
+      "register_ref": "Payment institution",
+      "aliases": [],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:e-money-institution",
+      "jurisdiction": "EU",
+      "regulator": "national competent authorities",
+      "name": "E-money institution (EMD2)",
+      "regime": "Directive 2009/110/EC",
+      "register": "eba_registers",
+      "register_ref": "Electronic money institution",
+      "aliases": [
+        "EMI (EU)"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:EU:credit-institution",
+      "jurisdiction": "EU",
+      "regulator": "ECB / national competent authorities",
+      "name": "Credit institution (CRD)",
+      "regime": "Directive 2013/36/EU, art. 8",
+      "register": "eba_registers",
+      "register_ref": "Credit institution",
+      "aliases": [
+        "bank (EU)"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:US:sec-broker-dealer",
+      "jurisdiction": "US",
+      "regulator": "SEC",
+      "name": "SEC-registered broker-dealer (Exchange Act s.15(b))",
+      "regime": "Securities Exchange Act of 1934, s.15(b); Form BD",
+      "register": "sec_finra",
+      "register_ref": "Broker-Dealer (Form BD)",
+      "aliases": [
+        "broker-dealer",
+        "BD"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:US:finra-member",
+      "jurisdiction": "US",
+      "regulator": "FINRA",
+      "name": "FINRA member firm",
+      "regime": "Exchange Act s.15(b)(8); FINRA By-Laws Art. III",
+      "register": "sec_finra",
+      "register_ref": "FINRA membership",
+      "aliases": [],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:US:carrying-broker-dealer",
+      "jurisdiction": "US",
+      "regulator": "SEC",
+      "name": "Carrying / clearing broker-dealer (Rule 15c3-3)",
+      "regime": "17 CFR 240.15c3-3",
+      "register": "sec_finra",
+      "register_ref": "Carrying firm",
+      "aliases": [
+        "clearing broker",
+        "carrying firm"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:US:sec-investment-adviser",
+      "jurisdiction": "US",
+      "regulator": "SEC",
+      "name": "SEC-registered investment adviser (Advisers Act s.203)",
+      "regime": "Investment Advisers Act of 1940, s.203; Form ADV",
+      "register": "sec_finra",
+      "register_ref": "Investment Adviser (Form ADV)",
+      "aliases": [
+        "RIA"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:US:fincen-msb",
+      "jurisdiction": "US",
+      "regulator": "FinCEN",
+      "name": "FinCEN-registered money services business",
+      "regime": "31 CFR 1022.380",
+      "register": "fincen_msb",
+      "register_ref": "MSB registration",
+      "aliases": [
+        "MSB"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:US:state-money-transmitter",
+      "jurisdiction": "US",
+      "regulator": "state regulators",
+      "name": "State money transmitter licence(s)",
+      "regime": "state money transmission acts (NMLS)",
+      "register": "fincen_msb",
+      "register_ref": "State MTL",
+      "aliases": [
+        "MTL"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "LIC:US:cftc-fcm",
+      "jurisdiction": "US",
+      "regulator": "CFTC / NFA",
+      "name": "CFTC-registered futures commission merchant",
+      "regime": "Commodity Exchange Act s.4d",
+      "register": "nfa_basic",
+      "register_ref": "FCM",
+      "aliases": [
+        "FCM"
+      ],
+      "clause_anchors": []
+    }
+  ],
+  "products_services": [
+    {
+      "id": "PRD:equities-brokerage",
+      "name": "equities brokerage",
+      "category": "service",
+      "description": "Receiving, transmitting and executing client orders in shares, ETFs and bonds.",
+      "aliases": [
+        "securities brokerage",
+        "order execution",
+        "stock trading"
+      ]
+    },
+    {
+      "id": "PRD:derivatives-cfds",
+      "name": "CFDs and leveraged derivatives",
+      "category": "product",
+      "description": "Contracts for difference, spread bets, rolling spot FX and other leveraged OTC derivatives offered to clients.",
+      "aliases": [
+        "CFDs",
+        "spread betting",
+        "leveraged FX"
+      ]
+    },
+    {
+      "id": "PRD:listed-options-futures",
+      "name": "listed options and futures",
+      "category": "product",
+      "description": "Exchange-traded derivatives brokered or cleared for clients.",
+      "aliases": [
+        "futures",
+        "options"
+      ]
+    },
+    {
+      "id": "PRD:investment-advice",
+      "name": "investment advice",
+      "category": "service",
+      "description": "Personal recommendations on financial instruments.",
+      "aliases": [
+        "advice"
+      ]
+    },
+    {
+      "id": "PRD:portfolio-management",
+      "name": "portfolio management",
+      "category": "service",
+      "description": "Discretionary management of client portfolios.",
+      "aliases": [
+        "discretionary management",
+        "robo-advice"
+      ]
+    },
+    {
+      "id": "PRD:custody",
+      "name": "custody of client assets",
+      "category": "service",
+      "description": "Safekeeping and administration of client financial instruments.",
+      "aliases": [
+        "custody",
+        "safekeeping"
+      ]
+    },
+    {
+      "id": "PRD:client-money-holding",
+      "name": "client money holding",
+      "category": "service",
+      "description": "Holding money belonging to clients in the course of investment business.",
+      "aliases": [
+        "client money",
+        "holding client money"
+      ]
+    },
+    {
+      "id": "PRD:margin-lending",
+      "name": "margin lending",
+      "category": "product",
+      "description": "Credit extended to clients to trade on margin.",
+      "aliases": [
+        "margin",
+        "margin accounts"
+      ]
+    },
+    {
+      "id": "PRD:securities-lending",
+      "name": "securities lending",
+      "category": "service",
+      "description": "Lending client or house securities, fully-paid lending programmes.",
+      "aliases": [
+        "stock lending"
+      ]
+    },
+    {
+      "id": "PRD:research",
+      "name": "investment research",
+      "category": "service",
+      "description": "Research and recommendations distributed to clients.",
+      "aliases": [
+        "research"
+      ]
+    },
+    {
+      "id": "PRD:e-money-issuance",
+      "name": "e-money issuance",
+      "category": "product",
+      "description": "Issuing electronic money against funds received.",
+      "aliases": [
+        "e-money",
+        "stored value"
+      ]
+    },
+    {
+      "id": "PRD:payment-accounts",
+      "name": "payment accounts",
+      "category": "product",
+      "description": "Accounts used to execute payment transactions, money remittance.",
+      "aliases": [
+        "payments",
+        "money transmission",
+        "remittance"
+      ]
+    },
+    {
+      "id": "PRD:card-programmes",
+      "name": "card programmes",
+      "category": "product",
+      "description": "Issuing payment cards to customers.",
+      "aliases": [
+        "cards",
+        "card issuing"
+      ]
+    },
+    {
+      "id": "PRD:deposits",
+      "name": "deposit taking",
+      "category": "product",
+      "description": "Taking repayable funds from the public (banking).",
+      "aliases": [
+        "deposits",
+        "banking"
+      ]
+    },
+    {
+      "id": "PRD:crypto-custody",
+      "name": "crypto custody",
+      "category": "service",
+      "description": "Custody and administration of crypto-assets on behalf of clients.",
+      "aliases": [
+        "custodian wallet",
+        "crypto safekeeping"
+      ]
+    },
+    {
+      "id": "PRD:crypto-exchange",
+      "name": "crypto exchange",
+      "category": "service",
+      "description": "Exchange of crypto-assets for funds or other crypto-assets; operating a trading platform.",
+      "aliases": [
+        "crypto trading platform",
+        "cryptoasset exchange"
+      ]
+    },
+    {
+      "id": "PRD:crypto-brokerage",
+      "name": "crypto brokerage",
+      "category": "service",
+      "description": "Reception, transmission and execution of orders in crypto-assets for clients.",
+      "aliases": [
+        "crypto execution"
+      ]
+    }
+  ],
+  "client_types": [
+    {
+      "id": "CLT:retail",
+      "name": "retail",
+      "description": "Retail clients / consumers (MiFID II art. 4(1)(11); FCA COBS 3.4).",
+      "aliases": [
+        "retail clients",
+        "consumers"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "CLT:professional",
+      "name": "professional",
+      "description": "Per se and elective professional clients (MiFID II Annex II; COBS 3.5).",
+      "aliases": [
+        "professional clients"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "CLT:eligible-counterparty",
+      "name": "eligible counterparty",
+      "description": "Eligible counterparties (MiFID II art. 30; COBS 3.6).",
+      "aliases": [
+        "ECP"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "CLT:sme",
+      "name": "SME",
+      "description": "Small and medium-sized business customers (payments / e-money framing).",
+      "aliases": [
+        "small business",
+        "business customers"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "CLT:institutional",
+      "name": "institutional",
+      "description": "Institutional investors, funds, corporates.",
+      "aliases": [
+        "institutions"
+      ],
+      "clause_anchors": []
+    },
+    {
+      "id": "CLT:accredited-investor",
+      "name": "accredited investor",
+      "description": "US accredited investors (Regulation D Rule 501(a)).",
+      "aliases": [
+        "accredited"
+      ],
+      "clause_anchors": []
+    }
+  ],
+  "channels": [
+    {
+      "id": "CHN:online",
+      "name": "online and mobile app",
+      "description": "Direct-to-customer digital channel (web, app); distance marketing rules apply.",
+      "aliases": [
+        "online",
+        "app",
+        "digital",
+        "web"
+      ]
+    },
+    {
+      "id": "CHN:telephone",
+      "name": "telephone",
+      "description": "Orders and advice taken by phone (recording obligations).",
+      "aliases": [
+        "phone",
+        "call centre"
+      ]
+    },
+    {
+      "id": "CHN:branch",
+      "name": "branch / face-to-face",
+      "description": "Physical premises or advisers meeting clients in person.",
+      "aliases": [
+        "face-to-face",
+        "in person"
+      ]
+    },
+    {
+      "id": "CHN:intermediary",
+      "name": "introducing brokers and intermediaries",
+      "description": "Business introduced by appointed representatives, IBs or tied agents.",
+      "aliases": [
+        "introducing broker",
+        "appointed representative",
+        "tied agent",
+        "IFA"
+      ]
+    },
+    {
+      "id": "CHN:api-white-label",
+      "name": "API and white-label",
+      "description": "Services delivered through partners' front ends or programmatic access.",
+      "aliases": [
+        "white label",
+        "B2B2C",
+        "API"
+      ]
+    },
+    {
+      "id": "CHN:social",
+      "name": "social promotion",
+      "description": "Acquisition through social platforms and paid promoters (financial promotion rules).",
+      "aliases": [
+        "social media",
+        "promoters"
+      ]
+    }
+  ],
+  "permits": [
+    {
+      "licence_id": "LIC:UK:dealing-in-investments-as-agent",
+      "product_id": "PRD:equities-brokerage",
+      "basis": "RAO art. 21 covers buying/selling investments as agent for clients"
+    },
+    {
+      "licence_id": "LIC:UK:dealing-in-investments-as-agent",
+      "product_id": "PRD:listed-options-futures",
+      "basis": "RAO art. 21; options and futures are specified investments (arts 83-84)"
+    },
+    {
+      "licence_id": "LIC:UK:dealing-in-investments-as-principal",
+      "product_id": "PRD:derivatives-cfds",
+      "basis": "RAO art. 14 with art. 85 CFDs as specified investments"
+    },
+    {
+      "licence_id": "LIC:UK:dealing-in-investments-as-principal",
+      "product_id": "PRD:margin-lending",
+      "basis": "Principal dealing firms extend margin under COBS/CASS conditions"
+    },
+    {
+      "licence_id": "LIC:UK:arranging-deals-in-investments",
+      "product_id": "PRD:equities-brokerage",
+      "basis": "RAO art. 25 arranging"
+    },
+    {
+      "licence_id": "LIC:UK:safeguarding-and-administering-investments",
+      "product_id": "PRD:custody",
+      "basis": "RAO art. 40 safeguarding and administering assets"
+    },
+    {
+      "licence_id": "LIC:UK:safeguarding-and-administering-investments",
+      "product_id": "PRD:securities-lending",
+      "basis": "Lending client assets requires custody permission (CASS 6.4)"
+    },
+    {
+      "licence_id": "LIC:UK:client-money-permission",
+      "product_id": "PRD:client-money-holding",
+      "basis": "CASS 7 client money rules"
+    },
+    {
+      "licence_id": "LIC:UK:advising-on-investments",
+      "product_id": "PRD:investment-advice",
+      "basis": "RAO art. 53"
+    },
+    {
+      "licence_id": "LIC:UK:advising-on-investments",
+      "product_id": "PRD:research",
+      "basis": "Research amounting to a personal recommendation is advising (PERG 8)"
+    },
+    {
+      "licence_id": "LIC:UK:managing-investments",
+      "product_id": "PRD:portfolio-management",
+      "basis": "RAO art. 37"
+    },
+    {
+      "licence_id": "LIC:UK:e-money-institution",
+      "product_id": "PRD:e-money-issuance",
+      "basis": "EMRs 2011 reg. 6"
+    },
+    {
+      "licence_id": "LIC:UK:e-money-institution",
+      "product_id": "PRD:payment-accounts",
+      "basis": "EMRs 2011 reg. 32 (payment services by EMIs)"
+    },
+    {
+      "licence_id": "LIC:UK:e-money-institution",
+      "product_id": "PRD:card-programmes",
+      "basis": "Card issuing as payment service (PSRs 2017 Sch 1 para 1(e))"
+    },
+    {
+      "licence_id": "LIC:UK:payment-institution",
+      "product_id": "PRD:payment-accounts",
+      "basis": "PSRs 2017 Sch 1"
+    },
+    {
+      "licence_id": "LIC:UK:payment-institution",
+      "product_id": "PRD:card-programmes",
+      "basis": "PSRs 2017 Sch 1 para 1(e)"
+    },
+    {
+      "licence_id": "LIC:UK:cryptoasset-registration",
+      "product_id": "PRD:crypto-exchange",
+      "basis": "MLRs 2017 reg. 14A cryptoasset exchange provider"
+    },
+    {
+      "licence_id": "LIC:UK:cryptoasset-registration",
+      "product_id": "PRD:crypto-brokerage",
+      "basis": "MLRs 2017 reg. 14A exchange provider (arranging)"
+    },
+    {
+      "licence_id": "LIC:UK:cryptoasset-registration",
+      "product_id": "PRD:crypto-custody",
+      "basis": "MLRs 2017 reg. 14A custodian wallet provider"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a1-reception-transmission",
+      "product_id": "PRD:equities-brokerage",
+      "basis": "MiFID II Annex I A(1)"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a2-execution",
+      "product_id": "PRD:equities-brokerage",
+      "basis": "MiFID II Annex I A(2)"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a2-execution",
+      "product_id": "PRD:listed-options-futures",
+      "basis": "MiFID II Annex I A(2) with Section C derivatives"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a3-dealing-on-own-account",
+      "product_id": "PRD:derivatives-cfds",
+      "basis": "MiFID II Annex I A(3) with Section C(9) CFDs"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a3-dealing-on-own-account",
+      "product_id": "PRD:margin-lending",
+      "basis": "MiFID II Annex I B(2) granting credits to investors (ancillary)"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a4-portfolio-management",
+      "product_id": "PRD:portfolio-management",
+      "basis": "MiFID II Annex I A(4)"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a5-investment-advice",
+      "product_id": "PRD:investment-advice",
+      "basis": "MiFID II Annex I A(5)"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-a5-investment-advice",
+      "product_id": "PRD:research",
+      "basis": "MiFID II Annex I B(5) investment research (ancillary)"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-b1-safekeeping",
+      "product_id": "PRD:custody",
+      "basis": "MiFID II Annex I B(1)"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-b1-safekeeping",
+      "product_id": "PRD:securities-lending",
+      "basis": "Ancillary to safekeeping; MiFID II art. 16(8)-(10) safeguards"
+    },
+    {
+      "licence_id": "LIC:EU:mifid-investment-firm",
+      "product_id": "PRD:client-money-holding",
+      "basis": "MiFID II art. 16(9) client funds safeguards"
+    },
+    {
+      "licence_id": "LIC:EU:credit-institution",
+      "product_id": "PRD:client-money-holding",
+      "basis": "Credit institutions may hold client funds as deposits (MiFID II art. 1(3))"
+    },
+    {
+      "licence_id": "LIC:EU:casp",
+      "product_id": "PRD:crypto-custody",
+      "basis": "MiCA art. 3(1)(17) custody and administration"
+    },
+    {
+      "licence_id": "LIC:EU:casp",
+      "product_id": "PRD:crypto-exchange",
+      "basis": "MiCA art. 3(1)(19)-(20) exchange; art. 3(1)(18) trading platform"
+    },
+    {
+      "licence_id": "LIC:EU:casp",
+      "product_id": "PRD:crypto-brokerage",
+      "basis": "MiCA art. 3(1)(22)-(23) execution / reception and transmission"
+    },
+    {
+      "licence_id": "LIC:EU:payment-institution",
+      "product_id": "PRD:payment-accounts",
+      "basis": "PSD2 Annex I"
+    },
+    {
+      "licence_id": "LIC:EU:payment-institution",
+      "product_id": "PRD:card-programmes",
+      "basis": "PSD2 Annex I(5) issuing of payment instruments"
+    },
+    {
+      "licence_id": "LIC:EU:e-money-institution",
+      "product_id": "PRD:e-money-issuance",
+      "basis": "EMD2 art. 10"
+    },
+    {
+      "licence_id": "LIC:EU:e-money-institution",
+      "product_id": "PRD:payment-accounts",
+      "basis": "EMD2 art. 6(1)(a)"
+    },
+    {
+      "licence_id": "LIC:EU:e-money-institution",
+      "product_id": "PRD:card-programmes",
+      "basis": "EMD2 art. 6(1)(a) with PSD2 Annex I(5)"
+    },
+    {
+      "licence_id": "LIC:EU:credit-institution",
+      "product_id": "PRD:deposits",
+      "basis": "CRR art. 4(1)(1) taking deposits"
+    },
+    {
+      "licence_id": "LIC:EU:credit-institution",
+      "product_id": "PRD:payment-accounts",
+      "basis": "PSD2 art. 1(1)(a)"
+    },
+    {
+      "licence_id": "LIC:EU:credit-institution",
+      "product_id": "PRD:margin-lending",
+      "basis": "CRD Annex I(2) lending"
+    },
+    {
+      "licence_id": "LIC:US:sec-broker-dealer",
+      "product_id": "PRD:equities-brokerage",
+      "basis": "Exchange Act s.15(a) effecting transactions in securities"
+    },
+    {
+      "licence_id": "LIC:US:sec-broker-dealer",
+      "product_id": "PRD:listed-options-futures",
+      "basis": "Options on securities under Exchange Act; FINRA Rule 2360"
+    },
+    {
+      "licence_id": "LIC:US:sec-broker-dealer",
+      "product_id": "PRD:margin-lending",
+      "basis": "Regulation T; FINRA Rule 4210"
+    },
+    {
+      "licence_id": "LIC:US:sec-broker-dealer",
+      "product_id": "PRD:securities-lending",
+      "basis": "Rule 15c3-3(b)(3) fully-paid lending"
+    },
+    {
+      "licence_id": "LIC:US:sec-broker-dealer",
+      "product_id": "PRD:research",
+      "basis": "FINRA Rule 2241"
+    },
+    {
+      "licence_id": "LIC:US:carrying-broker-dealer",
+      "product_id": "PRD:custody",
+      "basis": "Rule 15c3-3 possession or control"
+    },
+    {
+      "licence_id": "LIC:US:carrying-broker-dealer",
+      "product_id": "PRD:client-money-holding",
+      "basis": "Rule 15c3-3(e) customer reserve"
+    },
+    {
+      "licence_id": "LIC:US:sec-investment-adviser",
+      "product_id": "PRD:investment-advice",
+      "basis": "Advisers Act s.202(a)(11)"
+    },
+    {
+      "licence_id": "LIC:US:sec-investment-adviser",
+      "product_id": "PRD:portfolio-management",
+      "basis": "Advisers Act; discretionary authority"
+    },
+    {
+      "licence_id": "LIC:US:fincen-msb",
+      "product_id": "PRD:payment-accounts",
+      "basis": "31 CFR 1010.100(ff)(5) money transmission"
+    },
+    {
+      "licence_id": "LIC:US:fincen-msb",
+      "product_id": "PRD:crypto-exchange",
+      "basis": "FIN-2019-G001 convertible virtual currency exchangers are money transmitters"
+    },
+    {
+      "licence_id": "LIC:US:fincen-msb",
+      "product_id": "PRD:crypto-brokerage",
+      "basis": "FIN-2019-G001"
+    },
+    {
+      "licence_id": "LIC:US:fincen-msb",
+      "product_id": "PRD:crypto-custody",
+      "basis": "FIN-2019-G001 hosted wallet providers"
+    },
+    {
+      "licence_id": "LIC:US:state-money-transmitter",
+      "product_id": "PRD:payment-accounts",
+      "basis": "State money transmission acts"
+    },
+    {
+      "licence_id": "LIC:US:state-money-transmitter",
+      "product_id": "PRD:crypto-exchange",
+      "basis": "State virtual-currency licensing (e.g. NY BitLicense)"
+    },
+    {
+      "licence_id": "LIC:US:cftc-fcm",
+      "product_id": "PRD:listed-options-futures",
+      "basis": "Commodity Exchange Act s.4d"
+    }
+  ],
+  "validity_rules": [
+    {
+      "id": "VR:uk-client-money-requires-cass",
+      "name": "UK client money needs a CASS permission",
+      "jurisdiction": "UK",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "jurisdictions": "UK",
+          "products": "client money holding"
+        },
+        "requires": {
+          "authorisations": [
+            "Client money permission (CASS)",
+            "E-money institution (Electronic Money Regulations 2011)",
+            "Authorised payment institution (Payment Services Regulations 2017)"
+          ]
+        }
+      },
+      "basis": "A UK investment firm without a client money permission cannot hold client money (CASS 7.10; Part 4A requirement 'not able to hold client money').",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:uk-custody-requires-safeguarding",
+      "name": "UK custody needs the safeguarding permission",
+      "jurisdiction": "UK",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "jurisdictions": "UK",
+          "products": "custody of client assets"
+        },
+        "requires": {
+          "authorisations": "Safeguarding and administering investments (custody)"
+        }
+      },
+      "basis": "RAO art. 40 safeguarding and administering investments.",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:uk-rao-permission-requires-part-4a",
+      "name": "UK RAO permissions sit on a Part 4A authorisation",
+      "jurisdiction": "UK",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "authorisations": [
+            "Dealing in investments as agent",
+            "Dealing in investments as principal",
+            "Arranging deals in investments",
+            "Safeguarding and administering investments (custody)",
+            "Advising on investments",
+            "Managing investments",
+            "Client money permission (CASS)"
+          ]
+        },
+        "requires": {
+          "authorisations": "UK MiFID investment firm (Part 4A permission)"
+        }
+      },
+      "basis": "Regulated activities may only be carried on by a person with Part 4A permission (FSMA s.19, s.55A).",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:eu-mifid-service-requires-authorisation",
+      "name": "EU MiFID services sit on an investment firm or credit institution authorisation",
+      "jurisdiction": "EU",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "authorisations": [
+            "MiFID II A(1) Reception and transmission of orders",
+            "MiFID II A(2) Execution of orders on behalf of clients",
+            "MiFID II A(3) Dealing on own account",
+            "MiFID II A(4) Portfolio management",
+            "MiFID II A(5) Investment advice",
+            "MiFID II B(1) Safekeeping and administration of financial instruments"
+          ]
+        },
+        "requires": {
+          "authorisations": [
+            "MiFID II investment firm authorisation",
+            "Credit institution (CRD)"
+          ]
+        }
+      },
+      "basis": "MiFID II art. 5(1): provision of investment services requires prior authorisation as an investment firm (credit institutions under art. 1(3)).",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:eu-client-money-requires-firm",
+      "name": "EU client money needs an investment firm or credit institution",
+      "jurisdiction": "EU",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "jurisdictions": "EU",
+          "products": "client money holding"
+        },
+        "requires": {
+          "authorisations": [
+            "MiFID II investment firm authorisation",
+            "Credit institution (CRD)",
+            "Payment institution (PSD2)",
+            "E-money institution (EMD2)"
+          ]
+        }
+      },
+      "basis": "MiFID II art. 16(9); PSD2 art. 10 safeguarding.",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:eu-custody-requires-b1-or-casp",
+      "name": "EU custody needs B(1) (financial instruments) or CASP (crypto)",
+      "jurisdiction": "EU",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "jurisdictions": "EU",
+          "products": "custody of client assets"
+        },
+        "requires": {
+          "authorisations": [
+            "MiFID II B(1) Safekeeping and administration of financial instruments",
+            "Credit institution (CRD)"
+          ]
+        }
+      },
+      "basis": "MiFID II Annex I B(1).",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:crypto-products-set-crypto-flag",
+      "name": "Crypto products imply crypto_services",
+      "jurisdiction": "*",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "products": [
+            "crypto custody",
+            "crypto exchange",
+            "crypto brokerage"
+          ]
+        },
+        "requires": {
+          "crypto_services": true
+        }
+      },
+      "basis": "Profile consistency: MiCA / MLR crypto scope is read from crypto_services.",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:crypto-flag-requires-authorisation",
+      "name": "Crypto services need a crypto authorisation in each jurisdiction",
+      "jurisdiction": "*",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "crypto_services": true
+        },
+        "requires": {
+          "authorisations": [
+            "CASP (MiCA)",
+            "Cryptoasset business registration (MLRs 2017)",
+            "FinCEN-registered money services business",
+            "State money transmitter licence(s)"
+          ]
+        }
+      },
+      "basis": "MiCA art. 59(1); MLRs 2017 reg. 56; 31 CFR 1022.380.",
+      "clause_anchors": [
+        {
+          "source_key": "celex/32023R1114",
+          "ref": "art_59"
+        }
+      ]
+    },
+    {
+      "id": "VR:eu-casp-is-dora-entity",
+      "name": "A CASP is a DORA financial entity",
+      "jurisdiction": "EU",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "authorisations": "CASP (MiCA)"
+        },
+        "requires": {
+          "financial_entity_dora": true
+        }
+      },
+      "basis": "DORA art. 2(1)(f).",
+      "clause_anchors": [
+        {
+          "source_key": "celex/32022R2554",
+          "ref": "art_2"
+        }
+      ]
+    },
+    {
+      "id": "VR:eu-investment-firm-is-dora-entity",
+      "name": "An EU investment firm is a DORA financial entity",
+      "jurisdiction": "EU",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "authorisations": "MiFID II investment firm authorisation"
+        },
+        "requires": {
+          "financial_entity_dora": true
+        }
+      },
+      "basis": "DORA art. 2(1)(b).",
+      "clause_anchors": [
+        {
+          "source_key": "celex/32022R2554",
+          "ref": "art_2"
+        }
+      ]
+    },
+    {
+      "id": "VR:us-broker-dealer-requires-finra",
+      "name": "A US broker-dealer dealing with the public is a FINRA member",
+      "jurisdiction": "US",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "authorisations": "SEC-registered broker-dealer (Exchange Act s.15(b))",
+          "customer_base": [
+            "retail",
+            "accredited investor"
+          ]
+        },
+        "requires": {
+          "authorisations": "FINRA member firm"
+        }
+      },
+      "basis": "Exchange Act s.15(b)(8): a registered broker-dealer must be a member of a registered securities association.",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:us-custody-requires-carrying",
+      "name": "US custody / client money needs a carrying broker-dealer",
+      "jurisdiction": "US",
+      "severity": "error",
+      "rule": {
+        "if": {
+          "jurisdictions": "US",
+          "products": [
+            "custody of client assets",
+            "client money holding"
+          ]
+        },
+        "requires": {
+          "authorisations": [
+            "Carrying / clearing broker-dealer (Rule 15c3-3)"
+          ]
+        }
+      },
+      "basis": "Rule 15c3-3 possession or control and customer reserve requirements.",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:eu-retail-cfds-intervention",
+      "name": "Retail CFDs in the EU are under product intervention measures",
+      "jurisdiction": "EU",
+      "severity": "warning",
+      "rule": {
+        "if": {
+          "jurisdictions": "EU",
+          "products": "CFDs and leveraged derivatives",
+          "customer_base": "retail"
+        }
+      },
+      "basis": "ESMA / NCA product intervention (MiFIR art. 40/42): leverage limits, negative balance protection, margin close-out and marketing restrictions apply to CFDs offered to retail clients.",
+      "clause_anchors": []
+    },
+    {
+      "id": "VR:online-distance-marketing",
+      "name": "Online channel brings distance-marketing duties",
+      "jurisdiction": "*",
+      "severity": "warning",
+      "rule": {
+        "if": {
+          "channels": "online and mobile app",
+          "customer_base": "retail"
+        },
+        "requires": {
+          "data_footprint": "*"
+        }
+      },
+      "basis": "Distance marketing / consumer-duty disclosures; personal data is necessarily processed online.",
+      "clause_anchors": []
+    }
+  ]
+}
