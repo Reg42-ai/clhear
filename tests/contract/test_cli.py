@@ -50,7 +50,7 @@ def test_init_doctor_and_quickstart_write_sample_layers(offline, monkeypatch, ca
     assert main(["quickstart"]) == 0
     summary = json.loads(capsys.readouterr().out)
     assert summary["items"] >= 1
-    assert summary["layers"] == ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"]
+    assert summary["coverage"] >= 1
     listed = list(Path(offline, "scopes").glob("*.yaml"))
     assert listed
     assert "example-scope" in listed[0].read_text(encoding="utf-8")

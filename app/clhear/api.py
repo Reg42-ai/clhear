@@ -77,7 +77,14 @@ def _check_attributes(attributes: dict) -> None:
         raise HTTPException(status_code=422, detail="attributes must be an object")
     unknown = sorted(set(attributes) - _attribute_keys())
     if unknown:
-        raise HTTPException(status_code=422, detail=f"attributes must be applicability attributes only: {unknown}")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"unknown profile field {unknown}. "
+                "A profile may include jurisdictions, authorisations, products, customer_base, "
+                "channels, data_footprint, crypto_services, financial_entity_dora."
+            ),
+        )
 
 
 def _iso(value):
@@ -133,8 +140,7 @@ def create_app() -> FastAPI:
         title="CLHEAR",
         version=get_settings().clhear_engine_version,
         description=(
-            "Open engine that turns chosen regulatory sources into a reference compliance blueprint. "
-            "One install, one database. Profiles carry applicability attributes only."
+            "Turn the texts you choose and a short description of an organisation into a compliance blueprint."
         ),
         dependencies=[Depends(require_token)],
     )

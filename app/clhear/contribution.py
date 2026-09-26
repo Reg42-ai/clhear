@@ -45,9 +45,12 @@ class NormalizerRule(BaseModel):
 
 
 class ContributionProposal(BaseModel):
-    """Parser and adapter rules and public clause mappings.
+    """Public parsing rules and clause mappings.
 
-    The composed blueprint's selected set is not a proposal.
+    List source keys, adapter definitions, normalizer rules, and structural
+    elements (an element id, a clause reference, and a provenance hash).
+    Organisation facts, live controls, owners, evidence locators, database
+    URLs, and credentials are rejected. Validating this document sends it nowhere.
     """
 
     model_config = ConfigDict(extra="forbid")

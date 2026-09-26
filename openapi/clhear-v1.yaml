@@ -20,10 +20,16 @@ components:
       type: object
     ContributionProposal:
       additionalProperties: false
-      description: 'Parser and adapter rules and public clause mappings.
+      description: 'Public parsing rules and clause mappings.
 
 
-        The composed blueprint''s selected set is not a proposal.'
+        List source keys, adapter definitions, normalizer rules, and structural
+
+        elements (an element id, a clause reference, and a provenance hash).
+
+        Organisation facts, live controls, owners, evidence locators, database
+
+        URLs, and credentials are rejected. Validating this document sends it nowhere.'
       properties:
         adapter_definitions:
           items:
@@ -273,9 +279,10 @@ components:
       title: WebhookBody
       type: object
 info:
-  description: HTTP API for one CLHEAR install. POST /v1/runs inserts a run. The worker
-    executes it. ContributionProposal is a schema only; this service does not send
-    it.
+  description: One CLHEAR install. Register the texts you choose, describe the organisation,
+    and POST /v1/runs. The call returns a run id. The worker writes the blueprint.
+    Read items, explanations, and clause pointers from the release. ContributionProposal
+    is checked locally and is sent nowhere.
   license:
     name: AGPL-3.0-only
     url: https://www.gnu.org/licenses/agpl-3.0.html

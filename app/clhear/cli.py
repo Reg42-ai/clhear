@@ -197,7 +197,7 @@ def cmd_quickstart(_args) -> int:
         "release_id": result["release"]["id"],
         "blueprint_id": composition.get("blueprint_id"),
         "items": len(composition.get("items") or []),
-        "layers": sorted((result["release"]["blueprints"].get("layers") or {}).keys()),
+        "coverage": len(composition.get("coverage") or []),
     })
     return 0
 
@@ -233,21 +233,24 @@ def _load_json(path: str) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="clhear")
+    parser = argparse.ArgumentParser(
+        prog="clhear",
+        description="Turn chosen texts and an organisation description into a compliance blueprint.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("init", help="create an empty scopes directory").set_defaults(func=cmd_init)
-    sub.add_parser("doctor", help="check the database and the model provider").set_defaults(func=cmd_doctor)
+    sub.add_parser("init", help="create an empty directory for scope files").set_defaults(func=cmd_init)
+    sub.add_parser("doctor", help="check the database and whether a live model is configured").set_defaults(func=cmd_doctor)
     sub.add_parser("migrate", help="apply database migrations").set_defaults(func=cmd_migrate)
     sub.add_parser("version", help="print the engine tag").set_defaults(func=cmd_version)
-    sub.add_parser("quickstart", help="write sample layers with the offline provider").set_defaults(func=cmd_quickstart)
+    sub.add_parser("quickstart", help="write a sample blueprint on this machine").set_defaults(func=cmd_quickstart)
 
-    build = sub.add_parser("build", help="derive L1 through L8 for one scope")
+    build = sub.add_parser("build", help="build a blueprint for one scope")
     build.add_argument("--scope", required=True)
     build.add_argument("--profile", action="append", default=[])
     build.set_defaults(func=cmd_build)
 
-    run = sub.add_parser("run", help="queue a run and execute it")
+    run = sub.add_parser("run", help="build a blueprint for a scope and store the release")
     run.add_argument("--scope", required=True)
     run.add_argument("--profile-id", action="append", default=[])
     run.add_argument("--queue-only", action="store_true")
@@ -258,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     release.add_argument("--out", default="artifacts")
     release.set_defaults(func=cmd_release)
 
-    validate = sub.add_parser("validate", help="validate a profile or a contribution proposal")
+    validate = sub.add_parser("validate", help="check an organisation profile or a contribution proposal")
     validate.add_argument("file")
     validate.add_argument("--contribution", action="store_true")
     validate.set_defaults(func=cmd_validate)
@@ -269,16 +272,16 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--out", default="")
     export.set_defaults(func=cmd_export)
 
-    compose = sub.add_parser("compose", help="compose a stored applicability profile")
+    compose = sub.add_parser("compose", help="compose a blueprint for a stored organisation profile")
     compose.add_argument("--profile", required=True)
     compose.set_defaults(func=cmd_compose)
 
-    serve = sub.add_parser("serve", help="serve the HTTP API")
+    serve = sub.add_parser("serve", help="serve the HTTP API on this machine")
     serve.add_argument("--host", default=os.environ.get("CLHEAR_BIND_HOST", "127.0.0.1"))
     serve.add_argument("--port", type=int, default=int(os.environ.get("CLHEAR_PORT", "8000")))
     serve.set_defaults(func=cmd_serve)
 
-    worker = sub.add_parser("worker", help="execute queued runs")
+    worker = sub.add_parser("worker", help="build blueprints for queued runs")
     worker.add_argument("--once", action="store_true")
     worker.add_argument("--poll", type=float, default=2.0)
     worker.set_defaults(func=cmd_worker)

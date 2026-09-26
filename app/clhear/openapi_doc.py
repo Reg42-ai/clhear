@@ -23,8 +23,10 @@ def document() -> dict:
         "url": "https://www.gnu.org/licenses/agpl-3.0.html",
     }
     schema["info"]["description"] = (
-        "HTTP API for one CLHEAR install. POST /v1/runs inserts a run. "
-        "The worker executes it. ContributionProposal is a schema only; this service does not send it."
+        "One CLHEAR install. Register the texts you choose, describe the organisation, "
+        "and POST /v1/runs. The call returns a run id. The worker writes the blueprint. "
+        "Read items, explanations, and clause pointers from the release. "
+        "ContributionProposal is checked locally and is sent nowhere."
     )
     return schema
 
