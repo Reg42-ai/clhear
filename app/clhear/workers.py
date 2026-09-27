@@ -111,7 +111,7 @@ def run_adapter_fleet(
     deployment verification runs that way, because newly discovered documents
     need L0 bindings that a deployment with L0 stopped cannot provide.
     """
-    from app.clhear.l1 import families, inventory, pipeline, registry_etoro, workflow
+    from app.clhear.l1 import families, inventory, pipeline, source_registry, workflow
     from app.clhear.l1.adapters import CITATOR_KEYS
     from app.clhear.l1.fleet import adapter_for, fleet_plan
 
@@ -122,7 +122,7 @@ def run_adapter_fleet(
         store = pipeline.S3Store(settings.clhear_datalake_bucket, settings.aws_region)
     else:
         store = pipeline.LocalStore(settings.clhear_artifacts_dir)
-    registry_etoro.seed(engine)
+    source_registry.seed(engine)
     event_key = event_key or str(uuid.uuid4())
     job_id = job_id or workflow.job_id_for(event_key, adapter_key)
     job = workflow.ensure_job(engine, job_id, adapter_key, trigger, event_key)

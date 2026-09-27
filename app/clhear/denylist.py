@@ -26,6 +26,7 @@ TERMS = (
     _term("Reg42 ", "Infer"),
     _term("cfr-17-", "ia-marketing"),
     _term("influ", "encer"),
+    _term("eto", "ro"),
 )
 
 

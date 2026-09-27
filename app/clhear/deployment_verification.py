@@ -186,7 +186,7 @@ def run_phase(engine, gateway, phase, verification_id, *, bootstrap=None):
             with workflow.bind_execution(engine, job_id):
                 if phase in {"bootstrap", "publish"}:
                     if phase == "bootstrap":
-                        from app.clhear.l1 import cycles, registry_etoro
+                        from app.clhear.l1 import cycles, source_registry
                         with workflow.stage("cycle_recovery", {"worker": "l0", "operation": "retire_interrupted_revision"}) as stage:
                             recovery = cycles.reconcile(engine, admit=False)
                             stage.details.update(recovery)
@@ -194,7 +194,7 @@ def run_phase(engine, gateway, phase, verification_id, *, bootstrap=None):
                             if recovery["status"] != "idle":
                                 raise RuntimeError("An active verification cycle must finish before deployment verification")
                         with workflow.stage("registry_bootstrap", {"worker": "l0", "operation": "registered_source_metadata"}):
-                            registry_etoro.seed(engine)
+                            source_registry.seed(engine)
                         with workflow.stage("operator_exception", {"worker": "l0", "publisher_permission_verified": False}) as stage:
                             from app.clhear.l1.finra_private_review import bootstrap as exception_bootstrap
                             exception_result = exception_bootstrap(engine)

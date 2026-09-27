@@ -484,6 +484,9 @@ def l1_family_completeness(engine: Engine, source_key: str | None) -> tuple[dict
 
 
 CURRENCY_MAX_LAG_HOURS = 24.0
+# Publishers with an official dated feed (citator / consolidation date); the
+# currency gate measures lag against these.
+TIER_A_ADAPTERS = frozenset({"uk_legislation", "eur_lex", "govinfo_us", "govinfo_us_usc", "govinfo_us_ecfr", "fca_handbook"})
 
 
 @register_suite("l1_currency")
@@ -496,7 +499,6 @@ def l1_currency(engine: Engine, source_key: str | None) -> tuple[dict, bool]:
     from datetime import date as _date
 
     from app.clhear.l1.models import source_versions, sources
-    from app.clhear.l1.starter_corpus import TIER_A_ADAPTERS
 
     lags: list[float] = []
     per_source: list[dict] = []
@@ -967,7 +969,7 @@ def l3_l5_referential(engine: Engine, source_key: str | None) -> tuple[dict, boo
     from app.clhear.derived_models import blocks as blocks_t
     from app.clhear.derived_models import obligations as obligations_t
     from app.clhear.l1.models import clauses, source_versions, sources
-    from app.clhear.l1.registry_etoro import S
+    from app.clhear.l1.source_registry import S
 
     registry_keys = {e["key"] for e in S}
     unknown_sources: list[str] = []

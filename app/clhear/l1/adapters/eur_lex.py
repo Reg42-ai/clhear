@@ -94,7 +94,7 @@ class EurLexAdapter:
         # The Cellar id actually fetched: an original act ("3…") or a
         # consolidated text ("0…-YYYYMMDD").
         self.celex_version = celex_version
-        # Registry-supplied SourceMeta (eToro blueprint); default = GDPR.
+        # Registry-supplied SourceMeta; default = GDPR.
         self._meta = meta
 
     def meta(self) -> SourceMeta:

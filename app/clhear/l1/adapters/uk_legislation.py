@@ -88,7 +88,7 @@ class UkLegislationAdapter:
         self.snapshot = snapshot
         # as_made=True fetches the SI exactly as originally made (as_published).
         self.as_made = as_made
-        # Registry-supplied SourceMeta (eToro blueprint); default = MLRs.
+        # Registry-supplied SourceMeta; default = MLRs.
         self._meta = meta
 
     def meta(self) -> SourceMeta:

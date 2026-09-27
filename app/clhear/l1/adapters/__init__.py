@@ -36,7 +36,7 @@ ADAPTER_KEYS = (
 )
 
 # HLD v2 §4.1 publisher adapters (parameterised; instantiated through
-# `fleet.adapter_for` / `starter_corpus`). Listed here so tooling can enumerate
+# `fleet.adapter_for`). Listed here so tooling can enumerate
 # every adapter class the fleet ships.
 PUBLISHER_ADAPTER_CLASSES = {
     "fca_handbook": "app.clhear.l1.adapters.fca_handbook:FcaHandbookAdapter",
