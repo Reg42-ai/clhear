@@ -1,6 +1,6 @@
 # Install
 
-This page is how you get a database, a model, and a private process. The README explains sources, scopes, profiles, and how to read a blueprint.
+This page is how you get a database, a model, and a private process. The [README](../README.md) explains sources, scopes, profiles, and how to read a blueprint. [How it works](how-it-works.md) walks through the pipeline.
 
 Python 3.12. Install a tag:
 
@@ -17,6 +17,8 @@ A run over your own texts calls a model. Pick one provider. `clhear doctor` exit
 | `anthropic` | `ANTHROPIC_API_KEY`, optional `CLHEAR_LLM_MODEL` |
 | `openai_compatible` | `OPENAI_BASE_URL`, `OPENAI_API_KEY`, optional `CLHEAR_LLM_MODEL` |
 | `bedrock` | `BEDROCK_MODEL_ID` or `CLHEAR_LLM_MODEL`, and the usual AWS credentials |
+
+If a source is a URL, set `CLHEAR_HTTP_MODE=live` as well. The default, `replay`, only reads recorded test fixtures and cannot fetch a publisher page.
 
 `CLHEAR_LLM_PROVIDER=fake` is the offline sample. `clhear quickstart` forces `fake` for its own run. While the provider is `fake`, `clhear run` and the worker also stay on that sample path. Set one of the three providers above before you expect a run to read a real corpus.
 
