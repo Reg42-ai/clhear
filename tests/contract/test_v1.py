@@ -95,7 +95,8 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
     fetched = client.post("/v1/sources/example-source/test-fetch")
     assert fetched.status_code == 200
     assert fetched.json()["stored"] is False
-    assert fetched.json()["nodes"] == 1
+    assert fetched.json()["clauses"] == 1
+    assert fetched.json()["preview"][0]["text"].startswith("An organisation must keep a record")
 
     spare = client.post("/v1/sources", json={"key": "spare-source", "adapter": "local_text", "locator": {"text": "spare"}, "kind": "guidance"})
     assert spare.status_code == 201

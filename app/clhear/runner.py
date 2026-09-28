@@ -51,7 +51,8 @@ def _live(engine: Engine, llm, profiles: list[dict]) -> dict:
         "profiles": stored,
         "blueprints": blueprints,
         "layers": report.get("layers") or {},
-        "failed_sources": [],
+        "sources": report.get("sources") or {},
+        "failed_sources": report.get("failed_sources") or [],
     }
 
 
@@ -79,7 +80,8 @@ def execute(engine: Engine, run: dict, *, sender: Callable[[str, bytes, dict], N
         for item in built["profiles"]:
             if item.get("engine_id"):
                 hoststore.set_profile_engine_id(engine, item["host_id"], item["engine_id"])
-        payload = _plain({"profiles": built["blueprints"], "layers": built["layers"]})
+        payload = _plain({"profiles": built["blueprints"], "layers": built["layers"],
+                          "sources": built.get("sources") or {}, "failed_sources": built.get("failed_sources") or []})
         release = hoststore.save_release(engine, scope=run["scope"], run_id=run["run_id"], blueprints=payload)
         finished = hoststore.finish_run(engine, run["run_id"], status="succeeded", release_id=release["id"])
         notify.emit(engine, "run.finished", {"run_id": run["run_id"], "release_id": release["id"]}, sender=sender)

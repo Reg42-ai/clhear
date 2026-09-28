@@ -70,6 +70,9 @@ def adapter_for(entry: dict) -> Adapter:
     key = entry["adapter"]
     if fetch.get("blocked"):
         return DeclarationGapAdapter(entry)
+    from app.clhear.l1.adapters.document import KEYS as DOCUMENT_KEYS, DocumentAdapter
+    if key in DOCUMENT_KEYS:
+        return DocumentAdapter(entry, meta)
     if fetch.get("document_type") == "publisher_publication":
         from app.clhear.l1.adapters.publisher import GenericPublisherDocumentAdapter
         return GenericPublisherDocumentAdapter(source_key=entry["key"], title=entry["name"], url=_url(entry),

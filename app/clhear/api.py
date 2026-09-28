@@ -3,14 +3,12 @@
 """Host HTTP API. A run is inserted here and executed by the worker."""
 from __future__ import annotations
 
-import hashlib
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.clhear.contribution import ContributionProposal, ProposalRejected, parse_proposal
-from app.clhear.l1.adapters import ADAPTER_KEYS, PUBLISHER_ADAPTER_CLASSES
+from app.clhear.l1.adapters import PUBLISHER_ADAPTER_CLASSES
 from app.clhear.l1.scopes import SCOPE_ENV
 from app.clhear.service_auth import require_token
 from app.clhear.settings import get_settings
@@ -161,8 +159,12 @@ def create_app() -> FastAPI:
 
     @application.get("/v1/adapters")
     def adapters() -> dict:
-        rows = [{"key": key, "kind": "starter"} for key in ADAPTER_KEYS]
-        rows.extend({"key": key, "kind": "publisher", "class": path} for key, path in sorted(PUBLISHER_ADAPTER_CLASSES.items()))
+        from app.clhear.l1.adapters import SOURCE_ADAPTERS
+
+        rows = [{**row, "kind": "general" if row["key"] in {"local_text", "url"} else "official"} for row in SOURCE_ADAPTERS]
+        rows.extend({"key": key, "kind": "publisher", "reads": "A publisher-specific page grammar",
+                     "locator": {"url": "https://... on that publisher's site"}}
+                    for key in sorted(PUBLISHER_ADAPTER_CLASSES))
         return {"adapters": rows}
 
     @application.get("/v1/sources")
@@ -201,37 +203,25 @@ def create_app() -> FastAPI:
         from app.clhear import hoststore
         from app.clhear.l1.fleet import adapter_for
 
-        row = hoststore.get_source(_engine(), key)
-        if row is None:
-            raise HTTPException(status_code=404, detail="source not found")
-        locator = row["locator"] if isinstance(row["locator"], dict) else {}
-        text = locator.get("text")
-        path = locator.get("path")
-        if text or path:
-            body = text if isinstance(text, str) else Path(path).read_text(encoding="utf-8")
-            raw = body.encode("utf-8")
-            return {
-                "stored": False,
-                "version": "local:" + hashlib.sha256(raw).hexdigest(),
-                "nodes": 1,
-                "bytes": len(raw),
-            }
+        from app.clhear.l1.models import CLAUSE_TYPES
+
         entry = hoststore.registry_entries(_engine(), [key])
         if not entry:
             raise HTTPException(status_code=404, detail="source not found")
         try:
             fetched = adapter_for(entry[0]).fetch()
         except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc)[:500]) from exc
+            raise HTTPException(status_code=422, detail=f"{type(exc).__name__}: {str(exc)[:480]}") from exc
         if fetched is None:
-            return {"stored": False, "version": None, "nodes": 0, "bytes": 0}
-        nodes = 0
-        for artifact in fetched.artifacts:
-            nodes += 1
+            return {"stored": False, "version": None, "nodes": 0, "clauses": 0, "bytes": 0, "preview": []}
         tree = getattr(fetched, "tree", None) or []
-        nodes = max(nodes, _count_nodes(tree))
+        walked = [node for root in tree for node in root.walk()]
+        clause_nodes = [node for node in walked if node.node_type in CLAUSE_TYPES and node.ref]
         nbytes = sum(len(artifact.content or b"") for artifact in fetched.artifacts)
-        return {"stored": False, "version": fetched.version_label, "nodes": nodes, "bytes": nbytes}
+        preview = [{"clause_ref": node.ref, "text": " ".join(node.subtree_text().split())[:200]}
+                   for node in clause_nodes[:8]]
+        return {"stored": False, "version": fetched.version_label, "nodes": len(walked),
+                "clauses": len(clause_nodes), "bytes": nbytes, "preview": preview}
 
     @application.get("/v1/scopes")
     def list_scopes() -> dict:
@@ -403,14 +393,6 @@ def _write_source(key: str, body: SourceBody) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _source_out(row)
-
-
-def _count_nodes(tree) -> int:
-    count = 0
-    for node in tree or []:
-        count += 1
-        count += _count_nodes(getattr(node, "children", None) or [])
-    return count
 
 
 def _release_or_404(release_id: str) -> dict:

@@ -20,5 +20,5 @@ jobs:
         run: python -m app.clhear.denylist
       - name: OpenAPI drift
         run: python -m app.clhear.openapi_doc --check
-      - name: Contract tests
-        run: python -m pytest tests/contract -q
+      - name: Tests
+        run: python -m pytest tests -q

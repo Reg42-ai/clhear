@@ -6,7 +6,7 @@ BeautifulSoup implements the adapter. A separate stdlib HTMLParser reader
 supplies the verifier's expected source blocks; it never calls this parser.
 """
 import re
-from bs4 import BeautifulSoup, Comment, NavigableString, Tag
+from bs4 import BeautifulSoup, Comment, Declaration, Doctype, NavigableString, ProcessingInstruction, Tag
 
 from app.clhear.l1.adapters.base import DocNode
 
@@ -35,7 +35,7 @@ def blocks(content):
                                "text": text, "fragment": str(element)})
 
         for child in element.children:
-            if isinstance(child, Comment):
+            if isinstance(child, (Comment, Doctype, Declaration, ProcessingInstruction)):
                 continue
             if isinstance(child, NavigableString):
                 chunks.append(str(child))

@@ -31,12 +31,24 @@ log = logging.getLogger("clhear.scope_build")
 
 
 def import_sources(engine: Engine, llm, scope: dict) -> dict:
+    """Import every source the scope names; report each source's outcome.
+
+    Returns ``{"lanes": {adapter: result}, "sources": {key: status},
+    "failed_sources": [{"source_key", "adapter", "status", "error"}]}``.
+    """
+    import uuid
+
+    from app.clhear import notify
     from app.clhear.hoststore import registry_entries
     from app.clhear.l1 import source_registry
     from app.clhear.workers import AdapterRunIncomplete, run_adapter_fleet
 
     keys = list(scope.get("sources") or [])
-    source_registry.install(registry_entries(engine, keys))
+    entries = registry_entries(engine, keys)
+    missing = sorted(set(keys) - {entry["key"] for entry in entries})
+    if missing:
+        raise RuntimeError("The scope names sources that are not registered: " + ", ".join(missing))
+    source_registry.install(entries)
     source_registry.seed(engine)
     groups: dict[str, list[str]] = {}
     declared = scope.get("imports") or {}
@@ -46,22 +58,60 @@ def import_sources(engine: Engine, llm, scope: dict) -> dict:
         for entry in source_registry.S:
             if entry.get("enabled", True):
                 groups.setdefault(entry["adapter"], []).append(entry["key"])
-    lanes = {}
+    run_id = uuid.uuid4().hex[:12]
+    lanes, statuses, failed = {}, {}, []
     for adapter, adapter_keys in groups.items():
         try:
-            result = run_adapter_fleet(engine, adapter, source_keys=list(adapter_keys), discover=False, trigger="scope_build",
-                                       event_key=f"scope-build:{scopes.active_name()}:{adapter}:{datetime.now(timezone.utc).date()}")
-            lanes[adapter] = {"statuses": result.get("statuses"), "acceptance": result.get("acceptance")}
+            result = run_adapter_fleet(engine, adapter, source_keys=list(adapter_keys), discover=False, host=True,
+                                       trigger="scope_build", event_key=f"scope-build:{scopes.active_name()}:{adapter}:{run_id}")
         except AdapterRunIncomplete as exc:
-            # Verified imports stay in force; acceptance findings are recorded, not hidden.
-            lanes[adapter] = {"incomplete": str(exc)[:300], "source_keys": list(adapter_keys)}
-            from app.clhear import notify
+            result = getattr(exc, "result", None) or {"sources": {key: "failed" for key in adapter_keys}, "failures": [str(exc)[:300]]}
+        lanes[adapter] = {"statuses": result.get("statuses"), "job_id": result.get("job_id")}
+        for key in adapter_keys:
+            status = (result.get("sources") or {}).get(key, "failed")
+            statuses[key] = status
+            if status not in {"added", "amended", "unchanged", "up-to-date"}:
+                error = _task_error(engine, result.get("job_id"), key)
+                failed.append({"source_key": key, "adapter": adapter, "status": status, "error": error})
+                notify.emit(engine, "source.failed", {"source_key": key, "adapter": adapter, "status": status,
+                                                      "error": error})
+    return {"lanes": lanes, "sources": statuses, "failed_sources": failed}
 
-            for key in adapter_keys:
-                notify.emit(engine, "source.failed", {
-                    "source_key": key, "adapter": adapter, "error": str(exc)[:300],
-                })
-    return lanes
+
+def _task_error(engine: Engine, job_id: str | None, source_key: str) -> str:
+    """The recorded reason a source task did not import, without source text."""
+    if not job_id:
+        return ""
+    import sqlalchemy as sa
+
+    from app.clhear.l1 import workflow
+
+    with engine.connect() as conn:
+        row = conn.execute(sa.select(workflow.tasks.c.summary, workflow.tasks.c.error)
+                           .where(workflow.tasks.c.job_id == job_id, workflow.tasks.c.source_key == source_key)).first()
+    if row is None:
+        return ""
+    summary = row.summary or {}
+    failure = summary.get("failure") or {}
+    detail = (summary.get("error") or (failure.get("message") if isinstance(failure, dict) else "")
+              or summary.get("note") or (row.error if isinstance(row.error, str) else ""))
+    findings = (summary.get("original_verification") or {}).get("findings") or []
+    if not detail and findings:
+        detail = "; ".join(f["code"] for f in findings)
+    return str(detail or summary.get("status") or "")[:300]
+
+
+def _stored_clause_count(engine: Engine, keys: list[str]) -> int:
+    import sqlalchemy as sa
+
+    from app.clhear.l1.models import clauses, source_versions, sources
+
+    if not keys:
+        return 0
+    with engine.connect() as conn:
+        return conn.execute(sa.select(sa.func.count()).select_from(
+            clauses.join(source_versions, clauses.c.source_version_id == source_versions.c.id)
+            .join(sources, source_versions.c.source_id == sources.c.id)).where(sources.c.key.in_(keys))).scalar_one()
 
 
 def derive_l2(engine: Engine, llm) -> dict:
@@ -205,6 +255,12 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
             inputs = layer_builds.check_inputs(conn, layer, name)
         started = datetime.now(timezone.utc)
         detail = steps[layer]()
+        if layer == "L1":
+            report["sources"] = detail.get("sources") or {}
+            report["failed_sources"] = detail.get("failed_sources") or []
+            if not _stored_clause_count(engine, list(scope.get("sources") or [])):
+                reasons = "; ".join(f"{f['source_key']}: {f['error'] or f['status']}" for f in report["failed_sources"])
+                raise RuntimeError("No text could be read from this scope's sources" + (f" ({reasons})" if reasons else ""))
         built = layer_builds.record(engine, layer, scope=name, inputs=inputs, counts=_counts(engine, layer),
                                     steps=detail, started_at=started)
         report["layers"][layer] = {"revision": built["revision"], "inputs": inputs, "counts": built["counts"]}

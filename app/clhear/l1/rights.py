@@ -60,6 +60,8 @@ RIGHTS: dict[str, RightsBasis] = {
     "irs_gov": RightsBasis("public_domain", "17 U.S.C. § 105 (IRS revenue procedures)", "https://www.irs.gov/privacy-disclosure/irs-privacy-policy"),
     "au_legislation": RightsBasis("open_licence", "Creative Commons Attribution 4.0 (Federal Register of Legislation)", "https://www.legislation.gov.au/copyright"),
     "sg_legislation": RightsBasis("licensed", "Singapore Statutes Online terms of use", "https://sso.agc.gov.sg/Help/TermsOfUse"),
+    "local_text": RightsBasis("licensed", "Text supplied by the operator of this install; its own terms apply", ""),
+    "url": RightsBasis("licensed", "Publisher terms apply; CLHEAR stores the text for citation", ""),
     "lists": RightsBasis("open_licence", "Publisher terms — list data reused as published", ""),
     "restricted_file": RightsBasis("byol_only", "Bring-your-own-licence — hashes only until a licensed file is present", ""),
     "wolfsberg": RightsBasis("licensed", "Wolfsberg Group publications — reproduction with acknowledgement", "https://wolfsberg-group.org/"),

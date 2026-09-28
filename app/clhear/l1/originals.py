@@ -423,7 +423,10 @@ def original_view(source_key, adapter_key, artifacts, canonical_url=""):
                 "normalization_version": NORMALIZATION_VERSION, "offset_unit": OFFSET_UNIT}
         if not body:
             raise ValueError("Empty original artifact")
-        if body.startswith(b"%PDF-"):
+        if adapter_key in {"local_text", "url"} and artifact.name == "source.txt":
+            text = normalize(body.decode("utf-8"))
+            item["method"] = "clhear-rendered-utf8-text"
+        elif body.startswith(b"%PDF-"):
             text, pages = pdf_original(body, source_key, adapter_key, part)
             item.update(method="pdfminer-text-and-layout", pages=pages)
         elif body.lstrip().startswith((b"{", b"[")):
@@ -581,7 +584,11 @@ def verify_original_projection(source_key, adapter_key, artifacts, nodes, clause
         actual = normalize(" ".join(value for _, _, value in fields))
         if actual != expected:
             report["findings"].append({"code": "ordered_original_text_mismatch", "detail": "Publisher and stored text differ in wording, order, multiplicity or additional content", "expected_characters": len(expected), "observed_characters": len(actual)})
-        if adapter_key == "lists":
+        if adapter_key in {"local_text", "url"}:
+            from app.clhear.l1.adapters.document import verify as verify_document
+            if not verify_document(artifacts, tree):
+                report["findings"].append({"code": "publisher_hierarchy_mismatch", "detail": "Stored clauses are not whole, consecutive lines of the rendered source"})
+        elif adapter_key == "lists":
             from app.clhear.l1.adapters.list_records import verify_records
             if not verify_records(artifacts, source_key, tree):
                 report["findings"].append({"code": "publisher_record_mismatch", "detail": "Complete publisher records, identities, fields or record hierarchy disagree"})

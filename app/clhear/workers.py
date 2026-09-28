@@ -90,8 +90,13 @@ def run_adapter_fleet(
     force_nightly: bool = False, nightly_only: bool = False,
     job_id: str | None = None, event_key: str | None = None, trigger: str = "manual",
     cycle_context: dict | None = None, source_keys: list[str] | None = None, discover: bool | None = None,
+    host: bool = False,
 ) -> dict:
     """Execute the same durable L1 workflow for manual and scheduled requests.
+
+    ``host=True`` is a host scope build: the declared sources import, and the
+    job succeeds when each of them imported. The registered-publisher
+    inventory, boundary and schedule gates do not apply to a host's own texts.
 
     Source tasks finish independently. Redelivery skips completed imports and
     reruns final audits/evals; a failed task never produces a handled marker.
@@ -121,7 +126,7 @@ def run_adapter_fleet(
     fixed_scope = sorted(set(source_keys)) if source_keys is not None else None
     if discover is None:
         discover = False
-    statuses, failures = {}, []
+    statuses, failures, per_source = {}, [], {}
     try:
         with workflow.bind_execution(engine, job_id):
             frozen_cycle = bool(cycle_context)
@@ -130,6 +135,7 @@ def run_adapter_fleet(
                                               "fixed_scope_reconciliation" if fixed_scope is not None else
                                               "discovery_and_database_reconciliation"}) as step:
                 before = ({"inventory_hash": cycle_context["inventory_hash"], "audit_id": None} if frozen_cycle else
+                          {"inventory_hash": None, "audit_id": None} if host else
                           inventory.run_inventory_audit(engine, store, job_id=job_id, scope=scope, discover=bool(discover)))
                 step.details.update(audit_id=before.get("audit_id"), inventory_hash=before.get("inventory_hash"))
         plan = list(fleet_plan(adapter_key))
@@ -233,6 +239,18 @@ def run_adapter_fleet(
                     except workflow.LeaseLost:
                         log.warning("source task lease was lost: %s", task_id)
             statuses[status] = statuses.get(status, 0) + 1
+            per_source[source_key] = status
+        if host:
+            imported = {"added", "amended", "unchanged", "up-to-date"}
+            result = {"adapter": adapter_key, "job_id": job_id, "ran": len(plan), "statuses": statuses,
+                      "sources": per_source, "failures": failures,
+                      "failed_sources": sorted(k for k, v in per_source.items() if v not in imported)}
+            workflow.update_job(engine, job_id, "completed" if not failures else "failed", result)
+            if failures:
+                incomplete = AdapterRunIncomplete(f"{job_id}: {len(failures)} source(s) did not import: " + ", ".join(failures))
+                incomplete.result = result
+                raise incomplete
+            return result
         if cycle_context:
             # Aggregate acceptance belongs after every lane. An unrelated
             # publisher's unresolved licence is not a retryable adapter error.
