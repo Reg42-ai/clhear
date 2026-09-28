@@ -131,6 +131,7 @@ class Candidate:
     public: bool
     clause_id: int | None = None
     clause_text: str = ""
+    sentence: str = ""
 
 
 def _title_from(text: str, ref: str) -> str:
@@ -269,6 +270,17 @@ def duty_text(text: str, context: dict | None) -> str:
     return f"{lead} {text}" if lead else text
 
 
+_ITEM_MARKER = re.compile(r"^\s*(?:\((?:[0-9]{1,3}[a-z]?|[a-z]{1,2}|[ivxlc]{1,6})\)|[a-z]\)|[-•*–])\s*", re.I)
+
+
+def sentence_text(text: str, context: dict | None) -> str:
+    """One readable sentence for a list item: "Personal data shall be processed lawfully ..."."""
+    lead = (context or {}).get("lead") or ""
+    if not lead:
+        return text
+    return f"{lead.rstrip(' :—-')} {_ITEM_MARKER.sub('', text.strip())}"
+
+
 def extract_source(engine: Engine, source_row, version_row) -> list[Candidate]:
     """Candidates for one in-force source version. Binding tier only; atomic
     (leaf) clauses only — see :func:`container_clause_ids`."""
@@ -312,6 +324,7 @@ def extract_source(engine: Engine, source_row, version_row) -> list[Candidate]:
                 public=True,
                 clause_id=row.id,
                 clause_text=text,
+                sentence=sentence_text(own, context),
             )
         )
     return out
@@ -410,7 +423,7 @@ def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
             l1_change = l1_latest.get(cand.source_key)
             effective = getattr(l1_change, "effective_date", None) or version_as_of.get(cand.source_key)
             effective_basis = getattr(l1_change, "effective_date_basis", "") or ("publisher" if effective else "none")
-            structured = registry.structured_fields(cand.clause_text or cand.statement, cand.modality)
+            structured = registry.structured_fields(cand.sentence or cand.clause_text or cand.statement, cand.modality)
             values = dict(
                 source_key=cand.source_key,
                 clause_ref=cand.ref,

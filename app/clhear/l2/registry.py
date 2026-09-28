@@ -141,7 +141,8 @@ def determination_text(structure: dict, fallback: str = "") -> str:
     text = f"{subject[0].upper()}{subject[1:]} {modal} {action}"
     if condition:
         text += f", {condition[0].lower()}{condition[1:]}"
-    return text.rstrip(".") + "."
+    text = re.sub(r"\s+([,;:.])", r"\1", text).replace(",,", ",")
+    return text.rstrip(".;, ") + "."
 
 
 def structured_fields(text: str, modality: str) -> dict:

@@ -19,7 +19,7 @@ from app.clhear.derived_models import obligations
 from app.clhear.l1.models import clauses, family_members, source_versions, sources
 from app.clhear.l2 import registry
 from app.clhear.l2.extract import (ADDRESSEE, MAX_STATEMENT, _title_from, clause_contexts, container_clause_ids,
-                                   detect_duty, duty_text, not_a_duty, obligation_id, why_id)
+                                   detect_duty, duty_text, not_a_duty, obligation_id, sentence_text, why_id)
 from app.clhear.platform import record
 from app.clhear.platform.gateway import parse_json_object
 from app.clhear.platform.ids import next_id
@@ -79,6 +79,7 @@ def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
                 out.append({
                     "source_key": src.key,
                     "ref": ref,
+                    "sentence": sentence_text(row.text or "", context),
                     "text": text,
                     "text_hash": row.text_hash,
                     "clause_id": row.id,
@@ -135,7 +136,7 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
         if len(statement) > MAX_STATEMENT:
             statement = statement[: MAX_STATEMENT - 1].rsplit(" ", 1)[0] + "…"
         addressee_match = ADDRESSEE.search(cand["text"])
-        structured = registry.structured_fields(cand["text"], str(parsed.get("modality") or "should"))
+        structured = registry.structured_fields(cand.get("sentence") or cand["text"], str(parsed.get("modality") or "should"))
         with engine.begin() as conn:
             why = registry.why_for(
                 oid, clause_id=cand["clause_id"], text_hash=cand["text_hash"], method="duty-triage-v1",

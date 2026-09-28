@@ -156,7 +156,9 @@ def derive_l4(engine: Engine, llm, profiles: list[dict]) -> dict:
     for profile in profiles:
         # Tenant-submitted self-descriptions, validated against the derived ontology.
         row = create_profile(engine, profile["attributes"], name=profile.get("name", ""), source="api", allow_invalid=True)
-        stored.append({"id": row["id"], "status": row.get("status"), "name": profile.get("name", "")})
+        validity = row.get("validity") if isinstance(row.get("validity"), dict) else {}
+        stored.append({"id": row["id"], "status": row.get("status"), "name": profile.get("name", ""),
+                       "errors": validity.get("errors") or [], "warnings": validity.get("warnings") or []})
     return {"licenses": licenses, "ontology": {"version": ontology["version"], "merged": ontology["license_types_merged"]},
             "predicates": predicates, "profiles": stored, "revalidation": revalidate_profiles(engine)}
 
@@ -172,26 +174,22 @@ def derive_l5(engine: Engine, llm) -> dict:
 
 
 def derive_l6(engine: Engine, llm, profile_ids: list[str] | None = None) -> dict:
+    """Compose a blueprint for each profile this build stored, over this scope only.
+
+    Explanations are the deterministic, citation-carrying text of ``l6.explain``.
+    """
     from app.clhear.fleets import compose_stored_profiles
     from app.clhear.l6 import composer
-    from app.clhear.l6.explain import refine_explanations
 
-    # A scoped build composes the profiles it just stored. Profiles already in
-    # the database keep the blueprints they have.
-    composed = compose_stored_profiles(engine, profile_ids=profile_ids if scopes.active() else None)
-    direct = []
+    if not scopes.active():
+        return {"composed": compose_stored_profiles(engine), "compositions": {}}
+    compositions = {}
     for pid in profile_ids or []:
         try:
-            direct.append(composer.compose_for_profile(engine, pid, requested_by="l6.compose:scope"))
+            compositions[pid] = composer.compose_for_profile(engine, pid, requested_by="l6.compose:scope")
         except KeyError:
             continue
-    explained = []
-    with engine.connect() as conn:
-        current = [composer.get_blueprint(conn, r["blueprint_id"]) for r in composer.list_blueprints(conn, status="current", limit=20)]
-    for bp in current:
-        if bp and bp["composition"].get("items"):
-            explained.append(refine_explanations(engine, llm, dict(bp["composition"], blueprint_id=bp["blueprint_id"])))
-    return {"composed": composed, "direct": [row.get("blueprint_id") for row in direct], "explained": len(explained)}
+    return {"compositions": compositions}
 
 
 def derive_l7(engine: Engine, llm) -> dict:
@@ -238,13 +236,20 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
     def run_l4() -> dict:
         detail = derive_l4(engine, llm, profiles or [])
         held["profiles"] = [p["id"] for p in detail.get("profiles") or []]
+        held["profile_checks"] = detail.get("profiles") or []
         return detail
+
+    def run_l6() -> dict:
+        detail = derive_l6(engine, llm, held["profiles"])
+        held["compositions"] = detail.get("compositions") or {}
+        return {k: v for k, v in detail.items() if k != "compositions"} | {"blueprints": sorted(
+            c.get("blueprint_id") or "" for c in held["compositions"].values())}
 
     steps = {
         "L1": (lambda: {"skipped": "import"}) if skip_import else (lambda: import_sources(engine, llm, scope)),
         "L2": lambda: derive_l2(engine, llm), "L3": lambda: derive_l3(engine, llm),
         "L4": run_l4, "L5": lambda: derive_l5(engine, llm),
-        "L6": lambda: derive_l6(engine, llm, held["profiles"]), "L7": lambda: derive_l7(engine, llm),
+        "L6": run_l6, "L7": lambda: derive_l7(engine, llm),
         "L8": lambda: derive_l8(engine, llm),
     }
     report = {"scope": name, "layers": {}}
@@ -277,6 +282,8 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
             inputs = layer_builds.check_inputs(conn, view, name)
         report["views"] = {view: {"inputs": inputs, "item_scores": item_priority(engine)}}
     report["profiles"] = held["profiles"]
+    report["profile_checks"] = held.get("profile_checks") or []
+    report["compositions"] = held.get("compositions") or {}
     return report
 
 

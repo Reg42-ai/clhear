@@ -422,6 +422,8 @@ def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> di
         "coverage": composition.get("coverage") or [],
         "minimality": composition.get("minimality") or {},
         "coverage_summary": composition.get("coverage_summary") or {},
+        "not_applicable": composition.get("not_applicable") or [],
+        "scope": composition.get("scope"),
         "engine_version": composition.get("engine_version"),
     }
 

@@ -31,9 +31,11 @@ EXPLANATION_RUBRIC = (
 )
 
 
-def fingerprint(attributes: dict, activities: list | None) -> str:
-    """One profile => one fingerprint: normalised attributes + activity filter."""
+def fingerprint(attributes: dict, activities: list | None, *, scope: list | None = None) -> str:
+    """One profile in one scope => one fingerprint: normalised attributes + activity filter + scope sources."""
     payload = {"attributes": _normalise(attributes or {}), "activities": sorted(activities) if activities else None}
+    if scope is not None:
+        payload["scope"] = sorted(scope)
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:32]
 
 

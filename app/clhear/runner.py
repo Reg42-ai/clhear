@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
 from typing import Callable
 
 from sqlalchemy.engine import Engine
 
 from app.clhear import hoststore, notify, scope_build
 from app.clhear.l1 import scopes
-from app.clhear.l6 import composer
 from app.clhear.settings import get_settings
 
 
@@ -19,32 +19,36 @@ def _plain(value):
     return json.loads(json.dumps(value, default=str))
 
 
-def _blueprint_for(engine: Engine, profile_id: str) -> dict | None:
-    with engine.connect() as conn:
-        rows = composer.list_blueprints(conn, profile_id=profile_id, status="current", limit=1)
-        if not rows:
-            return None
-        stored = composer.get_blueprint(conn, rows[0]["blueprint_id"])
-    if not stored:
-        return None
-    composition = stored.get("composition") or {}
-    composition["blueprint_id"] = stored["blueprint_id"]
-    composition["profile_id"] = profile_id
-    return composition
+def _check_profiles(engine: Engine, profiles: list[dict]) -> None:
+    """Refuse a run for a profile that cannot be read, before any model is called."""
+    from app.clhear.l4.validate import validate
+
+    problems = []
+    for item in profiles:
+        result = validate(engine, item.get("attributes") or {})
+        if result["errors"]:
+            problems.append(f"{item.get('host_id')}: " + "; ".join(e["message"] for e in result["errors"]))
+    if problems:
+        raise ValueError("Invalid profile: " + " | ".join(problems))
 
 
 def _live(engine: Engine, llm, profiles: list[dict]) -> dict:
+    _check_profiles(engine, profiles)
     report = scope_build.build(
         engine, llm,
         profiles=[{"name": item.get("name") or "", "attributes": item.get("attributes") or {}} for item in profiles],
     )
     engine_ids = list(report.get("profiles") or [])
+    checks = {c["id"]: c for c in report.get("profile_checks") or []}
+    compositions = report.get("compositions") or {}
     stored = []
     blueprints = {}
     for item, engine_id in zip(profiles, engine_ids):
-        composed = _blueprint_for(engine, engine_id)
         host_id = item.get("host_id") or engine_id
+        composed = compositions.get(engine_id)
         if composed is not None:
+            composed = {**composed, "profile_id": host_id,
+                        "profile_warnings": (checks.get(engine_id) or {}).get("warnings") or []}
             blueprints[host_id] = composed
         stored.append({"host_id": host_id, "engine_id": engine_id, "blueprint_id": (composed or {}).get("blueprint_id")})
     return {
@@ -58,7 +62,35 @@ def _live(engine: Engine, llm, profiles: list[dict]) -> dict:
 
 def execute(engine: Engine, run: dict, *, sender: Callable[[str, bytes, dict], None] | None = None) -> dict:
     """Run scope_build for a live provider, or the offline sample when the provider is fake."""
+    previous_scope = os.environ.get(scopes.SCOPE_ENV)
     os.environ[scopes.SCOPE_ENV] = run["scope"]
+    try:
+        with _one_build_at_a_time(engine):
+            return _execute(engine, run, sender=sender)
+    finally:
+        if previous_scope is None:
+            os.environ.pop(scopes.SCOPE_ENV, None)
+        else:
+            os.environ[scopes.SCOPE_ENV] = previous_scope
+
+
+@contextmanager
+def _one_build_at_a_time(engine: Engine):
+    """Layer builds share the derived tables: two workers take turns (PostgreSQL advisory lock)."""
+    if engine.dialect.name != "postgresql":
+        yield
+        return
+    import sqlalchemy as sa
+
+    with engine.connect() as conn:
+        conn.execute(sa.text("SELECT pg_advisory_lock(:key)"), {"key": 0x434C4852554E})
+        try:
+            yield
+        finally:
+            conn.execute(sa.text("SELECT pg_advisory_unlock(:key)"), {"key": 0x434C4852554E})
+
+
+def _execute(engine: Engine, run: dict, *, sender: Callable[[str, bytes, dict], None] | None = None) -> dict:
     profiles = []
     for profile_id in run.get("profiles") or []:
         row = hoststore.get_profile(engine, profile_id)

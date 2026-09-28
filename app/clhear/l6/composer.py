@@ -76,6 +76,15 @@ def _l4_applicable(conn, attributes: dict) -> list[dict]:
         return []
 
 
+def _verdict_item(verdict: dict) -> dict:
+    ob, es = verdict["obligation"], verdict["edges"]
+    return {"derivation_key": ob["id"], "obligation_id": ob.get("stable_id") or ob["id"], "source_key": ob["source_key"],
+            "clause_ref": ob["clause_ref"], "title": ob["title"], "status": ob["status"],
+            "confidence": float(ob.get("confidence") or 0),
+            "duty": ob.get("determination") or ob.get("statement") or "",
+            "predicates": [{"predicate": e["predicate"], "basis": e["basis"], "rationale": e["rationale"]} for e in es]}
+
+
 def resolve_anchor_in(conn: Connection, anchor: dict) -> list[dict]:
     """Anchor {source_key, refs[]} -> derived obligation rows (may be empty:
     the anchor's source may be restricted or its clauses not duty-detected)."""
@@ -215,15 +224,38 @@ def compose_in(conn: Connection, profile: dict, *, requested_by: str = "", relea
     return result
 
 
+def _scope_source_keys(profile: dict) -> tuple[str | None, list[str] | None]:
+    """(scope name, source keys) the blueprint is for; (None, None) = the whole store."""
+    if profile.get("source_keys") is not None:
+        return profile.get("scope") or None, sorted(profile["source_keys"])
+    from app.clhear.l1 import scopes
+
+    keys = scopes.keys()
+    return (scopes.active_name() or None, sorted(keys)) if keys is not None else (None, None)
+
+
 def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
     attributes = profile.get("attributes", {}) or {}
     wanted_activities = profile.get("activities")  # None = evaluate all curated
     profile_id = profile.get("profile_id")
+    scope_name, scope_keys = _scope_source_keys(profile)
+    # Host blueprints: every duty in scope gets an explicit verdict from L4.
+    verdicts = None
+    if wanted_activities is None:
+        from app.clhear.l4.predicates import applicability
+
+        try:
+            verdicts = applicability(conn, attributes, source_keys=scope_keys)
+        except sa.exc.OperationalError:  # pre-m0012 database
+            verdicts = None
 
     activity_rows = [dict(r) for r in conn.execute(sa.select(activities_t).order_by(activities_t.c.id)).mappings()]
     block_rows = [dict(r) for r in conn.execute(sa.select(blocks_t).order_by(blocks_t.c.id)).mappings()]
     requires_edges = _live_requires(conn)
-    l4_applicable = _l4_applicable(conn, attributes) if wanted_activities is None else []
+    if verdicts is not None:
+        l4_applicable = [_verdict_item(v) for v in verdicts.values() if v["applies"]]
+    else:
+        l4_applicable = _l4_applicable(conn, attributes) if wanted_activities is None else []
     chars = _live_characteristics(conn)
     operated = _live_operates(conn)
     for a in activity_rows:
@@ -240,7 +272,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
     for item in l4_applicable:
         ob = {"id": item["derivation_key"], "source_key": item["source_key"], "clause_ref": item["clause_ref"],
               "title": item["title"], "status": item["status"], "confidence": item["confidence"],
-              "stable_id": item["obligation_id"]}
+              "stable_id": item["obligation_id"], "duty": item.get("duty", "")}
         slot = triggered.setdefault(ob["id"], {"obligation": ob, "activities": [], "conditions": []})
         slot["activities"].append("L4:applies_to")
         slot["conditions"].append({k: v for p in item["predicates"] for k, v in p["predicate"].items()})
@@ -259,6 +291,8 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                      "reason": "no derived obligation at this anchor (restricted source or non-duty clause)"}
                 )
             for ob in resolved:
+                if verdicts is not None and not (ob["id"] in verdicts and verdicts[ob["id"]]["applies"]):
+                    continue  # an activity never adds a duty that does not apply, or one outside the scope
                 slot = triggered.setdefault(ob["id"], {"obligation": ob, "activities": [], "conditions": []})
                 if act["id"] not in slot["activities"]:
                     slot["activities"].append(act["id"])
@@ -269,7 +303,8 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
     required: dict[str, list[dict]] = {}
     for oid, slot in triggered.items():
         ob = slot["obligation"]
-        cands = [b for b in block_rows if b.get("valid_to") is None and any(_selector_covers(sel, ob) for sel in b["satisfies"])]
+        cands = [b for b in block_rows if b.get("valid_to") is None and not b.get("canonical_id")
+                 and any(_selector_covers(sel, ob) for sel in b["satisfies"])]
         for edge in requires_edges.get(oid, ()):
             b = _canonical(blocks_by_id, blocks_by_id.get(edge["block_id"]))
             if b is None:
@@ -294,6 +329,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                 "source_key": ob["source_key"],
                 "clause_ref": ob["clause_ref"],
                 "title": ob["title"],
+                "duty": ob.get("duty") or "",
                 "status": ob["status"],
                 "confidence": float(ob["confidence"] or 0),
                 "triggered_by": slot["activities"],
@@ -372,7 +408,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
     jurisdictions = set(attributes.get("jurisdictions", []) or [])
     unmapped_count = 0
     unmapped_sample = []
-    if jurisdictions:
+    if jurisdictions and verdicts is None:
         rows = conn.execute(
             sa.select(obligations.c.id, obligations.c.source_key, obligations.c.clause_ref, obligations.c.title)
             .where(obligations.c.jurisdiction.in_(jurisdictions))
@@ -388,6 +424,17 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                          "clause_ref": row.clause_ref, "title": row.title}
                     )
 
+    not_applicable = []
+    for oid, verdict in sorted((verdicts or {}).items()):
+        if verdict["applies"]:
+            continue
+        ob = verdict["obligation"]
+        not_applicable.append({
+            "obligation_id": oid, "stable_id": ob.get("stable_id"), "source_key": ob["source_key"],
+            "clause_ref": ob["clause_ref"], "title": ob["title"],
+            "because": [{"requires": e["predicate"], "basis": e["basis"], "rationale": e["rationale"]}
+                        for e in verdict["failed"]],
+        })
     states = [c["state"] for c in coverage]
     program = {}
     for it in items:
@@ -396,7 +443,8 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
         "engine_version": ENGINE_VERSION,
         "release": release,
         "profile_id": profile_id,
-        "fingerprint": fingerprint(attributes, wanted_activities),
+        "fingerprint": fingerprint(attributes, wanted_activities, scope=scope_keys),
+        "scope": {"name": scope_name, "source_keys": scope_keys} if scope_keys is not None else None,
         "profile_attributes": attributes,
         "activities_evaluated": [a["id"] for a in activity_rows if wanted_activities is None or a["id"] in wanted_activities],
         "obligations_triggered": len(coverage),
@@ -413,7 +461,9 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
             "covered": states.count("covered"),
             "gaps": states.count("gap"),
             "total": len(states),
+            "not_applicable": len(not_applicable),
         },
+        "not_applicable": not_applicable,
         "unresolved_anchors": unresolved_anchors,
         "unmapped_obligations": {"count": unmapped_count, "sample": unmapped_sample,
                                  "note": "derived obligations in your jurisdictions not yet mapped to any activity — visible by design"},
