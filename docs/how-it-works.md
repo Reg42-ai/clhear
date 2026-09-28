@@ -4,7 +4,16 @@ This page follows one run from texts to blueprint, layer by layer, and states th
 
 ## The idea in one paragraph
 
-A regulation is a list of duties written as prose. An organisation only has to meet the duties that apply to it, and one well-chosen measure (a process, a record, a role, a system) often meets several duties at once. CLHEAR makes that reduction explicit. It reads the texts, pulls out the duties with a pointer to each clause, decides which apply to the organisation's facts, and chooses a set of measures that covers every applicable duty, with a proof that none of them is redundant.
+A regulation is a list of duties written as prose. An organisation only has to meet the duties that apply to it, and one well-chosen measure (a process, a record, a role, a system) often meets several duties at once. CLHEAR makes that reduction explicit. It reads the texts, pulls out the duties with a pointer to each clause, asks the questions those duties raise about the organisation, and chooses a set of measures that covers every applicable duty, with a proof that none of them is redundant.
+
+## The evidence contract
+
+L1 holds the official texts. Every record in L2 to L8 either quotes them or points at a lower-layer record that does. That is what keeps the engine independent of any sector: roles, conditions, licence types, measures and activities are the words of the texts in scope, so each installation's model of its domain grows from its own sources.
+
+- **A quote** is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote"}`, and `quote` equals the clause text between `start` and `end`. A value the model proposes is kept only when it is such a quote, or (for a measure's or licence's name) when every word of it occurs in the cited clauses.
+- **An evidence gap** is written when a record cannot be derived: which layer, which duty or measure, what is missing, and a recommendation naming the kind of source that would supply it. Gaps are rebuilt on every run and shown in the blueprint.
+- **The engine's own data model is not evidence and needs none:** the measure kinds and their fields, the duty grammar (modal verbs; "where / if / unless"; public bodies such as an authority, a department or a court), and the blueprint states. These describe how CLHEAR reads any text.
+- **Lineage.** Before composing, a run re-checks every quote of every record it derived for the scope against the stored clause text and the clause's in-force status. A record that fails is withheld from the blueprint and listed in the release's `lineage.unanchored`.
 
 ## The layers
 
@@ -58,52 +67,58 @@ A clause is a **duty** when, read with its lead-in (a list item continues the se
 Each duty becomes an obligation `OBL:<source>#<clause_ref>` with:
 
 - its sentence: for a list item, "Personal data shall be kept in a form …";
-- its structure: subject, action, condition (the duty's own "where / if / unless" clause) and object;
-- a type: record keeping, reporting, disclosure, security, data protection, risk management, training, governance and so on.
+- its structure: subject, action, condition (the duty's own "where / if / unless" clause) and object, each stored with its quote. A field read across a lead-in and its list item is two quotes;
+- its verb as written ("keep", "notify", "not disclose"). No taxonomy of duty types is imposed on the text;
+- no invented addressee: a duty that does not state who it binds says so.
 
 The model then helps in three bounded ways:
 
 - **Triage.** Clauses with weaker wording ("should", "is expected to") are shown to the model. It must quote the words it relied on, verbatim, or the verdict is dropped.
-- **Structure repair.** Where the rules could not split a sentence, the model may, using only words from the clause.
+- **Structure repair.** Where the rules could not split a sentence, the model may. Every field it returns must be the clause's own words, quoted; otherwise the answer is dropped.
 - **Review.** A second reading marks each derivation correct, incorrect or unsure. Incorrect readings open a proposal for a person to decide.
 
 ### L3: Measures
 
-Every duty gets at least one **measure** (`BLK-…`):
+A **measure** (`BLK-…`) is what a duty tells the addressee to do or to have, in the duty's words:
 
-- Duties without one are grouped by type and shown to the model in batches. It proposes one concrete measure per batch and may cite only the duties it was shown. A proposal that matches an existing measure's name is linked to that measure instead of creating a near-duplicate.
-- Any duty still without a measure gets one deterministically from its own words, reusing an existing measure of the same kind when the names match.
+- The model reads the duties in document order and groups them into measures. It may cite only the duties it was shown, and a name is kept only when every word of it occurs in those duties' clauses. A rejected name is an evidence gap (`measure_name_rejected`), never a measure.
+- Any duty still without a measure gets one from its own words: the action ("review user access rights") or the thing to have ("an inventory of the systems …"), quoted. The kind is read from the same words: an appointing verb gives a Role; a head noun such as policy, register or log gives a Document; system or software gives a System; otherwise a duty to do something is a Process. When the words do not say, the kind is `Unspecified`.
+- A duty that names nothing concrete gets no measure: it stays a `gap`, and an evidence gap (`no_measure`) recommends the guidance that would name one.
 - Near-identical measures are merged.
-- Each measure's characteristics (cadence, owner, trigger …) are filled from the duty texts, or marked "not specified by source".
+- A characteristic (cadence, owner, retention, approver …) is recorded only when a clause states it, with the quote. Each field the texts leave open is an evidence gap (`characteristic_unspecified`) naming the guidance that would specify it.
 
 ### L4: Applicability
 
-A duty's **conditions** are recorded as edges, each with the words it came from:
+A duty's conditions are the questions its own words raise. Each is recorded as an edge with its quote:
 
 | Edge | Comes from | Example |
 | --- | --- | --- |
-| jurisdiction | the source's declared jurisdiction | `{"jurisdictions": "EU"}` |
-| subject | who the text addresses | "the controller" → `{"data_footprint": "*"}` |
-| condition | the duty's own where/if clause | "where an organisation processes personal data" → `{"data_footprint": "*"}` |
-| model | a quoted, closed-world reading, only for duties the rules could not read | |
+| jurisdiction | the jurisdiction the source is registered with | `{"jurisdictions": "EU"}` |
+| role | the addressee the duty names, when it is not "every organisation" / "any person" / a pronoun | "The controller and the processor shall …" → `{"roles": ["controller", "processor"]}` |
+| condition | the duty's own "where / if / unless / to the extent that" clause, when it is about the addressee | "Where an organisation processes personal data, it shall …" → `{"condition": "COND-…", "fact": "processes personal data", "expect": true}` |
 
-**The rule:** a duty applies to an organisation when every one of its edges matches the profile. A duty with no edges applies to every organisation. Words elsewhere in a sentence ("online", "consumers") describe the duty; they never narrow it.
+A few grammatical rules keep the questions honest. A passive duty ("personal data shall be kept …") and a duty that sets content ("the notice shall include …") name no addressee. A relative clause on the addressee ("a firm that holds client money") is a condition. When the subject is a pronoun ("where a covered entity maintains …, it must …"), the condition's noun phrase is the addressee. A clause about an event rather than the addressee ("where an incident is likely to harm them", "when they join") times the duty and is shown on it as a trigger; it does not decide whether the duty applies.
 
-`GET /v1/profile-schema` lists the profile fields, what each one changes, and the values this install knows. By default the ontology (jurisdictions, licences, products) comes only from your own sources. `CLHEAR_CURATED_FINANCE=1`, set before the first migration, seeds a reviewed UK/EU/US financial-services ontology instead.
+**The rule** is three-valued. A duty *applies* when every edge is answered and matches the profile, is *not applicable* when an answer fails (the failed edge and its quote are the reason), and is *undetermined* while any question it raises has no answer. A duty with no edges applies to every organisation.
+
+`GET /v1/profile-schema?scope=<name>` lists the questions a built scope raises, with quotes. A role that no text in scope defines is an evidence gap (`role_undefined`).
+
+**Licence types** are read only from the scope's clauses that use the words of licensing (licence, permit, registration, authorisation, certificate, accreditation). The model sees only those clauses, must cite one per type, and a name is kept only when its words are in that clause. When none is found, the blueprint carries a `no_licence_types` gap.
 
 ### L5: Activities
 
-Every duty is mapped to an **activity** that operates its measure (record, report, notify, train, test, monitor …). Activities give each measure an operator and connect duties that share one. They never decide applicability: that is L4's job alone.
+Every duty with a measure is mapped to an **activity**: its action, quoted ("review user access rights"), operated by the addressee the clause names ("the management body"). An activity operates the measures its duties require. When the text addresses everyone or is written in the passive, it does not say who carries the duty out; the activity has no operator and an evidence gap (`operator_not_stated`) says so. No activity catalogue, owner or business process is filled in. Activities never decide applicability: that is L4's job alone.
 
 ### L6: Composer, which produces the blueprint
 
 For one profile, over the run's scope only:
 
-1. Every duty in scope gets a verdict from L4: it applies, or it does not and the failed edges are listed.
+1. Every duty in scope gets a verdict from L4: it applies, it does not (the failed edges are listed), or it is undetermined (the open questions are listed, and gathered as `open_questions`).
 2. Every measure an applicable duty **requires** is taken (`basis: required`).
 3. A greedy set cover picks the fewest further measures for the remaining duties (`basis: selected`), and a pruning pass removes any that became redundant.
 4. The **minimality proof** records, for each measure, the duties only it satisfies and what would become a gap without it.
-5. Each measure gets an **explanation** that cites its duties and the profile facts that made them apply.
+5. Each measure gets an **explanation** that cites its duties, quotes the clause, and names the profile answers that made them apply.
+6. The evidence gaps that concern this blueprint are attached, each with its recommendation.
 
 The result is a pure function of its inputs: same scope, profile and layers give the same blueprint. Blueprints are stored under `BLU-…` ids. A newer blueprint for the same profile and scope supersedes the older one, and nothing is deleted, which is what makes `diff` possible.
 
@@ -115,12 +130,17 @@ The result is a pure function of its inputs: same scope, profile and layers give
 | Use it for | Seeing the blueprint shape | Real blueprints |
 | Blueprint | Marked `"sample": true` | Real |
 
+### L7 and L8
+
+L7 (enforcement records and risk scores) builds only from sources of kind `enforcement` in the scope, and L8 (reference practice) only from sources of kind `guidance`. Without one, the layer is recorded as not built, makes no model call, and the blueprint carries a gap recommending the source to add.
+
 ## Honesty guarantees
 
 - A run where no source produced text fails, and says which source failed and why.
 - A layer where every model call failed (bad key, wrong model, spend cap) fails the run with the last error. Partial failures are counted in the release's `model_calls`.
 - `source.failed` fires only for sources that did not import.
-- Every duty in scope is covered, a gap, or not applicable with a reason. None is dropped.
+- Every duty in scope is covered, a gap, not applicable with a reason, or undetermined with its question. None is dropped.
+- Every record in the blueprint quotes its clause, and the quotes are checked again on every run. What cannot be quoted is withheld or reported as an evidence gap, never filled in.
 
 ## Code map
 
@@ -129,9 +149,11 @@ The result is a pure function of its inputs: same scope, profile and layers give
 | `app/clhear/cli.py`, `app/clhear/api.py` | The `clhear` command and the `/v1` HTTP API |
 | `app/clhear/runner.py`, `app/clhear/scope_build.py` | One queued run; the layer-by-layer build of a scope |
 | `app/clhear/l1/adapters/document.py` | Text, HTML and PDF sources: rendering, clause structure, verification |
-| `app/clhear/l2/extract.py` | Duty detection rules |
-| `app/clhear/l3/generate.py`, `l3/decompose.py` | Measures from the model; the deterministic fallback |
-| `app/clhear/l4/predicates.py` | Applicability edges and the applicability rule |
+| `app/clhear/evidence.py`, `app/clhear/lineage.py` | Quotes, evidence gaps and their recommendations; the lineage check |
+| `app/clhear/l2/extract.py`, `l2/registry.py` | Duty detection rules; structure and its quotes |
+| `app/clhear/l3/generate.py`, `l3/decompose.py`, `l3/kinds.py` | Measures from the model; from the duty's own words; the kinds |
+| `app/clhear/l4/predicates.py`, `l4/validate.py` | Questions read from the text, the three-valued rule; profiles |
+| `app/clhear/l5/map.py` | Activities and their operators, quoted |
 | `app/clhear/l6/composer.py` | Set cover, minimality proof, blueprint |
 | `app/clhear/platform/gateway.py` | Model providers, retries, spend caps, call ledger |
 | `migrations/` | Numbered schema migrations, applied on startup |

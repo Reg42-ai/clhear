@@ -2,7 +2,13 @@
 
 ## 0.2.0
 
-A run over your own texts now produces a real, traceable blueprint. In 0.1.0 the live path could not: pasted text never imported, model calls failed quietly, and runs over different scopes mixed.
+A run over your own texts now produces a real, traceable blueprint, in any sector. In 0.1.0 the live path could not: pasted text never imported, model calls failed quietly, and runs over different scopes mixed. Every record in the blueprint is now quoted from the texts in scope, and what they cannot support is reported instead of guessed.
+
+### Grounded in the texts
+- Every derived record carries its evidence: quotes of the clause text with offsets (duties and their subject, action and condition; measures; characteristics; applicability edges; activities; licence types).
+- Before composing, each run checks every quote again against the stored clause and withholds any record that fails. The release reports it as `lineage` (`rows`, `anchored`, `unanchored`).
+- New `evidence_gaps` in the blueprint: what the texts could not support, with a recommendation of which source to add (`no_measure`, `measure_name_rejected`, `characteristic_unspecified`, `role_undefined`, `no_licence_types`, `operator_not_stated`, `no_enforcement_sources`, `no_reference_sources`).
+- The engine carries no sector vocabulary. The reviewed financial-services catalog (measures, activities, licence and product ontology, attribute schema, sample profiles, starter concepts, register checks) and `CLHEAR_CURATED_FINANCE` are removed.
 
 ### Reading texts (L1)
 - `local_text` works: pasted text, or a text, HTML or PDF file under `CLHEAR_LOCAL_SOURCES_DIR` (default `./sources`, `/sources` in the image).
@@ -22,22 +28,26 @@ A run over your own texts now produces a real, traceable blueprint. In 0.1.0 the
 ### Duties (L2) and measures (L3)
 - Heading filters read real headings only; words such as "extent", "scope" or "title" inside a sentence no longer hide a duty.
 - List items are read with their lead-in and become one duty each.
-- Duties of supervisory and competent authorities are excluded.
+- Duties of public bodies are excluded by grammar (an authority, commission, department, court, agency or minister as the subject), whatever the sector.
 - "shall include" is a duty.
-- New duty types: data protection, security, risk management, training, safety.
-- Measures are generated for every duty, grouped by type, and near-duplicates are reused.
+- A duty's type is its own verb as written ("keep", "notify"), not a fixed taxonomy; a duty that does not state who it binds is never given a default addressee.
+- Measures are named in the duty's words. A name the model proposes is kept only when every word of it is in the cited clauses; a duty that names nothing concrete becomes a gap with a recommendation. Measure kinds are read from the duty's words, or `Unspecified`.
+- Characteristics are recorded only when a clause states them, with the quote.
 
-### Applicability (L4) and blueprints (L6)
-- One rule: a duty applies when all its conditions match, and a duty with none applies everywhere. Conditions come from the source's jurisdiction, the addressee, and the duty's own where/if clause.
-- `GET /v1/profile-schema` explains each profile fact. `PUT /v1/profiles` returns validation errors and warnings.
-- The financial-services ontology is seeded only with `CLHEAR_CURATED_FINANCE=1`.
-- Blueprints are per scope. Every duty is `covered`, a `gap`, or listed in `not_applicable` with the condition it failed. Each coverage row carries its duty sentence.
-- Two profiles with the same facts both get a blueprint. An invalid profile stops the run before any model call.
+### Applicability (L4), activities (L5) and blueprints (L6)
+- The profile answers the questions the texts raise: `jurisdictions`, `roles` (the addressees the duties name), `conditions` (the duties' own "where / if / unless" clauses about the addressee) and `licences`. `GET /v1/profile-schema?scope=<name>` lists them with quotes.
+- Three-valued rule: a duty applies when every question is answered and matches, is not applicable when an answer fails, and is undetermined while a question is unanswered. The blueprint lists `undetermined` duties and `open_questions`.
+- Licence types are read only from the scope's licensing clauses, with a quote check.
+- Activities are the duty's quoted action, operated by the quoted addressee, or an `operator_not_stated` gap.
+- L7 and L8 build only from `enforcement` and `guidance` sources in scope; otherwise they are recorded as not built, with a gap.
+- Blueprints are per scope. Every duty is `covered`, a `gap`, `not_applicable` with the condition it failed, or `undetermined` with its question. Each coverage row carries its quote.
+- Two profiles with the same answers both get a blueprint. A malformed profile stops the run before any model call.
 - The offline sample is marked `"sample": true`.
 
 ### Removed
 - Internal-testing code: a company-specific source registry, an internal starter corpus, a private rulebook crawl and review with its operator exceptions, a fixed-scope deployment verification, and a demo corpus. Migration `0041` drops the retired tables.
 
 ### Upgrading from 0.1.0
-- Schema revision `0041` is applied on startup.
-- A 0.1.0 database was seeded with the financial ontology. Start a fresh database for general texts, or set `CLHEAR_CURATED_FINANCE=1` to keep using it.
+- Schema revisions `0041` and `0042` are applied on startup. `0042` adds the evidence columns and `evidence_gaps`, removes the rows the retired catalog seeded, and closes applicability edges written in the old attribute vocabulary; the next run derives them again from your texts.
+- **Profiles change shape (breaking).** `authorisations`, `products`, `customer_base`, `channels`, `data_footprint`, `crypto_services` and `financial_entity_dora` are no longer accepted. Run each scope once, read `GET /v1/profile-schema?scope=<name>`, and answer its `roles` and `conditions`.
+- `GET /v1/profile-schema` takes `?scope=`. Blueprints gain `undetermined`, `open_questions`, `evidence_gaps` and `profile_warnings`; releases gain `lineage`.
