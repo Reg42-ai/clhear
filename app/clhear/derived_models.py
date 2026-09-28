@@ -367,7 +367,7 @@ licences = sa.Table(
     sa.Column("regulator", sa.Text, nullable=False, default=""),
     sa.Column("name", sa.Text, nullable=False),
     sa.Column("regime", sa.Text, nullable=False, default=""),  # instrument creating the authorisation
-    sa.Column("register", sa.Text, nullable=False, default=""),  # register key (fca_register, esma_registers, sec_finra)
+    sa.Column("register", sa.Text, nullable=False, default=""),  # register key (fca_register, esma_registers, sec_registers)
     sa.Column("register_url", sa.Text, nullable=False, default=""),
     sa.Column("register_ref", sa.Text, nullable=False, default=""),  # permission / activity code in the register
     sa.Column("aliases", Json, nullable=False, default=list),

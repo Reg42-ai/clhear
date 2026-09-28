@@ -4,7 +4,7 @@
 
 The ontology is *built from registers*, not from model memory. Each adapter
 knows one public register (FCA Financial Services Register, ESMA / EBA
-registers, SEC-FINRA BrokerCheck / IAPD, FinCEN MSB, NFA BASIC), the
+registers, SEC IAPD / EDGAR, FinCEN MSB, NFA BASIC), the
 permission taxonomy it publishes, and how to confirm that a permission /
 activity code in our snapshot still exists there.
 
@@ -105,9 +105,8 @@ class EbaRegisters(RegisterAdapter):
     probe_urls = ("https://euclid.eba.europa.eu/register/pir/disclaimer",)
 
 
-class SecFinraRegisters(RegisterAdapter):
-    probe_urls = ("https://www.sec.gov/about/divisions-offices/division-trading-markets/broker-dealers",
-                  "https://brokercheck.finra.org/")
+class SecRegisters(RegisterAdapter):
+    probe_urls = ("https://www.sec.gov/about/divisions-offices/division-trading-markets/broker-dealers",)
 
 
 class FincenMsb(RegisterAdapter):
@@ -122,7 +121,7 @@ ADAPTERS = {
     "fca_register": FcaRegister,
     "esma_registers": EsmaRegisters,
     "eba_registers": EbaRegisters,
-    "sec_finra": SecFinraRegisters,
+    "sec_registers": SecRegisters,
     "fincen_msb": FincenMsb,
     "nfa_basic": NfaBasic,
 }

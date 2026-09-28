@@ -56,12 +56,10 @@ _SUBJECT_CUES: list[tuple[str, str, object]] = [
      "authorisations", ["LIC:UK:payment-institution", "LIC:EU:payment-institution", "LIC:UK:e-money-institution", "LIC:EU:e-money-institution"]),
     (r"\bcredit institutions?\b|\bbanks?\b", "authorisations", ["LIC:EU:credit-institution"]),
     (r"\bbroker-?dealers?\b|\bbrokers? or dealers?\b", "authorisations", ["LIC:US:sec-broker-dealer"]),
-    (r"\bFINRA members?\b|\bmember firms?\b", "authorisations", ["LIC:US:finra-member"]),
     (r"\binvestment advisers?\b", "authorisations", ["LIC:US:sec-investment-adviser"]),
     (r"\bmoney services business(?:es)?\b|\bmoney transmitters?\b|\bMSBs?\b",
      "authorisations", ["LIC:US:fincen-msb", "LIC:US:state-money-transmitter"]),
     (r"\bfutures commission merchants?\b|\bFCMs?\b", "authorisations", ["LIC:US:cftc-fcm"]),
-    (r"\bmembers?\b(?! states?)", "authorisations", ["LIC:US:finra-member"], ("US",)),
     (r"\bfinancial entit(?:y|ies)\b", "financial_entity_dora", True),
     (r"\b(?:data )?controllers?\b|\b(?:data )?processors?\b", "data_footprint", "*"),
     # "a firm" / "authorised person" / "obliged entity": any regulated organisation — some

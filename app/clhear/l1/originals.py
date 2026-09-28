@@ -111,9 +111,8 @@ def _html_fragment_digest(node):
 def verify_html_fragments(source_key, artifacts, tree):
     """Bind retained HTML snippets to independently decoded source elements.
 
-    Generic block locators name their exact publisher element. FINRA's legacy
-    fragments must be equivalent to an original element and include the node's
-    independently checked source wording; they are not claimed to be byte slices.
+    Block locators name their exact publisher element, and the node's wording
+    must appear in that element.
     """
     nodes = [n for r in tree for n in r.walk() if n.source_fragment]
     if not nodes:
@@ -121,11 +120,7 @@ def verify_html_fragments(source_key, artifacts, tree):
     indexes = {}
     for part, artifact in enumerate(artifacts, 1):
         reader = _HTMLStructure()
-        content = artifact.content
-        if source_key.startswith("finra/") and not source_key.startswith("finra/rule/"):
-            from app.clhear.l1.adapters.finra_document import document_markup
-            content = document_markup(content)
-        reader.feed(_decode_html(content))
+        reader.feed(_decode_html(artifact.content))
         by_path, signatures = {}, set()
         def visit(node, path):
             signature = _html_fragment_digest(node)
@@ -153,7 +148,7 @@ def verify_html_fragments(source_key, artifacts, tree):
             path = re.sub(r"/text-block\(\)\[\d+\]$", "", loc.get("path", ""))
             if index[0].get(path) != signature:
                 return False
-        elif not source_key.startswith("finra/rule/") or signature not in index[1]:
+        else:
             return False
         wording = normalize(" ".join(v for v in (node.label, node.heading, node.raw_text) if v))
         if wording and wording not in html_text(node.source_fragment.encode()):
@@ -218,11 +213,7 @@ def verify_html_structure(source_key, adapter_key, artifacts, tree):
     pattern = _html_pattern(adapter_key)
     expected = []
     for part, artifact in enumerate(artifacts, 1):
-        content = artifact.content
-        if adapter_key == "finra" and not source_key.startswith("finra/rule/"):
-            from app.clhear.l1.adapters.finra_document import document_markup
-            content = document_markup(content)
-        records = html_blocks(content)
+        records = html_blocks(artifact.content)
         numbered = any(pattern and pattern.match(row["text"]) for row in records)
         headings, active = [], None
         for row in records:
@@ -432,18 +423,9 @@ def original_view(source_key, adapter_key, artifacts, canonical_url=""):
                 "normalization_version": NORMALIZATION_VERSION, "offset_unit": OFFSET_UNIT}
         if not body:
             raise ValueError("Empty original artifact")
-        if source_key.startswith("finra/rule/"):
-            from app.clhear.l1.adapters.finra import expected_text, _scope, validate_identity
-            validate_identity(_scope(body)[2], source_key, canonical_url)
-            text = normalize(" ".join(expected_text(body)))
-            item["method"] = "finra-independent-visible-text"
-        elif body.startswith(b"%PDF-"):
+        if body.startswith(b"%PDF-"):
             text, pages = pdf_original(body, source_key, adapter_key, part)
             item.update(method="pdfminer-text-and-layout", pages=pages)
-        elif adapter_key == "finra":
-            from app.clhear.l1.adapters.finra_document import document_markup
-            text = html_text(document_markup(body))
-            item.update(method="finra-publication-independent-html", scope="official-publication-title-and-body")
         elif body.lstrip().startswith((b"{", b"[")):
             text = _json_text(body, source_key)
             item["method"] = "independent-json-field-walk"
@@ -599,11 +581,7 @@ def verify_original_projection(source_key, adapter_key, artifacts, nodes, clause
         actual = normalize(" ".join(value for _, _, value in fields))
         if actual != expected:
             report["findings"].append({"code": "ordered_original_text_mismatch", "detail": "Publisher and stored text differ in wording, order, multiplicity or additional content", "expected_characters": len(expected), "observed_characters": len(actual)})
-        if source_key.startswith("finra/rule/"):
-            from app.clhear.l1.adapters.finra import validate_tree
-            if validate_tree(tree, artifacts, source_key, canonical_url):
-                report["findings"].append({"code": "publisher_hierarchy_mismatch", "detail": "FINRA source markers, references or parent hierarchy disagree"})
-        elif adapter_key == "lists":
+        if adapter_key == "lists":
             from app.clhear.l1.adapters.list_records import verify_records
             if not verify_records(artifacts, source_key, tree):
                 report["findings"].append({"code": "publisher_record_mismatch", "detail": "Complete publisher records, identities, fields or record hierarchy disagree"})

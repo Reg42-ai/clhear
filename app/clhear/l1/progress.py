@@ -2,24 +2,18 @@
 # This file is part of CLHEAR. See LICENSE (AGPL-3.0-only).
 """A small progress record L0 publishes between full viewer snapshots.
 
-The candidate viewer database is republished only when a job finishes; an
-operator watching a long import, a queue recovery or a binding wait saw
-nothing move in between. This record is a few kilobytes of state read from
-the ledgers — never text — and is published beside the candidate as
-``progress.json``. It keeps four questions apart, because their answers come
-from different evidence and change at different times:
+The candidate viewer database is republished only when a job finishes. This
+record is a few kilobytes of state read from the ledgers (never text) and is
+published beside the candidate as ``progress.json``. It keeps three questions
+apart, because their answers come from different evidence:
 
-* **deployment** — did the last owner-merged deployment pass its own checks
-  (five fixed imports, readback, unchanged repeat)?
-* **corpus verification** — what did the last technical L1 cycle over the
-  whole publisher scope find?
-* **publisher permissions** — how much of the scope has reviewed publisher
-  permission, how much is under the owner's private exception, how much is
-  denied?
-* **nightly validation** — has a scheduled cycle been observed and kept?
+* **corpus verification**: what did the last technical L1 cycle find?
+* **publisher permissions**: how much of the scope has reviewed publisher
+  permission, and how much is blocked or denied?
+* **nightly validation**: has a scheduled cycle been observed and kept?
 
-"Ready for private review" is derived from those, and carries the viewer
-link, the deployed revision and the snapshot timestamp it refers to.
+``viewer`` carries the viewer link, the deployed revision and the snapshot
+timestamp it refers to.
 """
 from __future__ import annotations
 
@@ -47,38 +41,6 @@ def _now():
 def _has(engine: Engine, table) -> bool:
     schema = None if engine.dialect.name == "sqlite" else table.schema
     return sa.inspect(engine).has_table(table.name, schema=schema)
-
-
-def _deployment(engine: Engine) -> dict:
-    """The last deployment-verification phases, from the runs ledger."""
-    with engine.connect() as conn:
-        rows = conn.execute(sa.select(runs.c.fleet, runs.c.trigger, runs.c.outputs, runs.c.created_at)
-                            .where(runs.c.fleet.like("%.deployment_verification")).order_by(runs.c.id.desc()).limit(12)).mappings().all()
-    latest = {}
-    for row in rows:
-        out = row["outputs"] if isinstance(row["outputs"], dict) else json.loads(row["outputs"] or "{}")
-        vid = out.get("verification_id")
-        if vid and vid not in latest:
-            latest[vid] = {"verification_id": vid, "phases": {}}
-        if vid:
-            phase = latest[vid]["phases"].setdefault(row["trigger"], {})
-            if not phase:
-                phase.update(status=out.get("status"), exit_code=out.get("exit_code"), finished_at=out.get("finished_at"),
-                             worker=out.get("worker"),
-                             steps={name: (step.get("passed") if isinstance(step, dict) and "passed" in step
-                                           else step.get("status") if isinstance(step, dict) else None)
-                                    for name, step in (out.get("steps") or {}).items()},
-                             deployment_checks=out.get("deployment_checks"),
-                             failure_summary=(out.get("failure_summary") or [])[:10])
-    if not latest:
-        return {"state": "no_deployment_verification_recorded", "evidence_mode": "deployment_verification"}
-    current = next(iter(latest.values()))
-    verify = current["phases"].get("verify") or {}
-    checks = verify.get("deployment_checks") or {}
-    state = ("passed" if checks.get("passed") else "failed" if verify.get("status") == "failed"
-             else "running" if verify and verify.get("status") == "running" else "not_verified")
-    return {"state": state, "evidence_mode": "deployment_verification",
-            "label": "deployment verification (fixed FINRA scope); not FINRA acceptance, not L1 acceptance", **current}
 
 
 def _corpus_verification(engine: Engine) -> dict:
@@ -109,25 +71,13 @@ def _publisher_permissions(engine: Engine) -> dict:
         if _has(engine, discovery.pages):
             statuses = dict(conn.execute(sa.select(discovery.pages.c.status, sa.func.count()).group_by(discovery.pages.c.status)).all())
             out["discovery_pages"] = statuses
-            out["binding_waits"] = statuses.get("awaiting_exception_binding", 0)
             out["permission_blocked"] = statuses.get("permission_blocked", 0)
-            out["exception_scope_blocked"] = statuses.get("exception_scope_blocked", 0)
             denied = conn.execute(sa.select(sa.func.count()).select_from(discovery.pages).where(
                 discovery.pages.c.status == "permission_blocked",
                 discovery.pages.c.result["publisher_denied"].as_string().in_(["true", "1"]))).scalar_one() \
                 if engine.dialect.name == "postgresql" else None
             out["publisher_denied_pages"] = denied
-    try:
-        from app.clhear.l1 import operator_exceptions
-        with engine.connect() as conn:
-            active = operator_exceptions.latest_active(conn) if _has(engine, operator_exceptions.exception_events) else None
-        out["operator_exception"] = {"active": active is not None, "activation_id": active["id"] if active else None,
-                                     "publisher_permission_verified": False, "release_eligible": False}
-    except Exception:  # noqa: BLE001 — the exception ledger may predate this record
-        out["operator_exception"] = {"active": None}
-    out["state"] = ("awaiting_l0_binding" if out.get("binding_waits") else
-                    "publisher_permission_unverified" if out.get("operator_exception", {}).get("active") else
-                    "publisher_permission_required")
+    out["state"] = "publisher_permission_required" if out.get("permission_blocked") else "no_permission_waits"
     return out
 
 
@@ -160,30 +110,23 @@ def _viewer(engine: Engine) -> dict:
 
 def compose(engine: Engine) -> dict:
     from app.clhear.platform import deferred
-    deployment = _deployment(engine)
     corpus = _corpus_verification(engine)
     permissions_state = _publisher_permissions(engine)
     nightly = _nightly(engine)
     viewer = _viewer(engine)
-    verification_id = deployment.get("verification_id")
-    ready = deployment.get("state") == "passed" and bool(viewer.get("snapshot_uri"))
+    ready = bool(viewer.get("snapshot_uri"))
     record = {
         "schema": SCHEMA, "generated_at": _now(), "generated_by": os.environ.get("CLHEAR_FLEET", "local").lower(),
         "code_revision": os.environ.get("CLHEAR_CODE_REVISION") or None,
-        "states": {"deployment": deployment, "corpus_verification": corpus,
+        "states": {"corpus_verification": corpus,
                    "publisher_permissions": permissions_state, "nightly_validation": nightly},
         "deferred_messages": deferred.counts(engine),
-        "binding_waits": permissions_state.get("binding_waits", 0),
-        "verification_progress": {"verification_id": verification_id,
-                                  "phases": {k: {"status": v.get("status"), "steps": v.get("steps")}
-                                             for k, v in (deployment.get("phases") or {}).items()}},
-        "ready_for_private_review": {
+        "viewer": {
             "ready": ready,
             "viewer_url": (os.environ.get("CLHEAR_PUBLIC_BASE_URL", "").rstrip("/") + "/l1") if ready else None,
             "deployed_revision": os.environ.get("CLHEAR_CODE_REVISION") or None,
             "snapshot_generated_at": viewer.get("generated_at"), "snapshot_revision": viewer.get("revision"),
-            "corpus_acceptance": "not_claimed", "reason": None if ready else
-            ("deployment verification has not passed" if deployment.get("state") != "passed" else "no viewer snapshot published"),
+            "corpus_acceptance": "not_claimed", "reason": None if ready else "no viewer snapshot published",
         },
     }
     return record

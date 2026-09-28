@@ -100,7 +100,6 @@ STATIC_ALIASES: dict[str, tuple[str, ...]] = {
     "Exchange Act Rule": ("cfr/17/240-bd", "cfr/17/reg-bi-sp"), "17 CFR 240": ("cfr/17/240-bd",),
     "17 CFR": ("cfr/17/240-bd", "cfr/17/reg-bi-sp"), "17 C.F.R.": ("cfr/17/240-bd", "cfr/17/reg-bi-sp"),
     "Regulation Best Interest": ("cfr/17/reg-bi-sp",), "Regulation S-P": ("cfr/17/reg-bi-sp",),
-    "FINRA": ("finra/rule/", "finra/rulebook"), "FINRA Rule": ("finra/rule/", "finra/rulebook"),
     "31 CFR": ("cfr/31/chapter-x",), "Bank Secrecy Act": ("cfr/31/chapter-x",),
 }
 class AliasIndex(list):

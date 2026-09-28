@@ -66,7 +66,7 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
     body = version.json()
     assert body["engine_version"] == "0.1.0"
     assert body["api_version"] == "v1"
-    assert body["schema_revision"] == "0040"
+    assert body["schema_revision"] == "0041"
     assert body["image_digest"] == "sha256:abc"
     assert client.get("/v1/health").json()["status"] == "ok"
     adapters = client.get("/v1/adapters").json()["adapters"]

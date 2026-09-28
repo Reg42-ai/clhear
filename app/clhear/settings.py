@@ -72,9 +72,6 @@ class Settings(BaseSettings):
     clhear_max_body_bytes: int = 1_000_000
     clhear_cors_origins: str = ""  # comma-separated exact origins, e.g. https://example.invalid
     clhear_l1_only: bool = False  # enable on worker deployments while accepting L1
-    # Live instance: ingest every current registry URL without operator review clicks.
-    # The website sign-in gate remains the access control.
-    clhear_private_completeness: bool = False
     # Private UI iteration over a worker-generated snapshot, never a writer.
     clhear_preview_mode: bool = False
     clhear_preview_snapshot_path: str = ""  # local only; Lambda uses its synchronized snapshot
@@ -106,7 +103,7 @@ class Settings(BaseSettings):
     clhear_bind_host: str = "127.0.0.1"
     clhear_engine_version: str = "0.1.0"
     clhear_api_version: str = "v1"
-    clhear_schema_revision: str = "0040"
+    clhear_schema_revision: str = "0041"
     clhear_image_digest: str = ""
 
     # --- community accounts & contributions (Phase C) ---

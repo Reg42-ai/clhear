@@ -75,7 +75,7 @@ _COMPLIANCE_CUES: list[tuple[str, str, str]] = [
     (r"\bsegregat(?:e|es|ed|ion)\b[^.]{0,60}\bcrypto|\bcrypto[- ]assets?\b[^.]{0,80}\b(?:safeguard|segregat|custod|safekeep)",
      "control", "ACT-SAFEGUARD-CRYPTO"),
     (r"\bsecurity of (?:the )?processing\b|\btechnical and organisational measures\b|\bencrypt|\baccess controls?\b|\bpseudonymis", "control", "ACT-SECURE-SYSTEMS"),
-    (r"\breport(?:s|ing|ed)?\b[^.]{0,60}\b(?:to the|to a|to any|with)\b[^.]{0,40}\b(?:authority|authorities|regulator|commission|FCA|SEC|FINRA|FinCEN|competent)\b|\bsuspicious\b|\bdisclos(?:e|es|ure)\b[^.]{0,60}\b(?:authority|regulator|officer)",
+    (r"\breport(?:s|ing|ed)?\b[^.]{0,60}\b(?:to the|to a|to any|with)\b[^.]{0,40}\b(?:authority|authorities|regulator|commission|FCA|SEC|FinCEN|competent)\b|\bsuspicious\b|\bdisclos(?:e|es|ure)\b[^.]{0,60}\b(?:authority|regulator|officer)",
      "report", "ACT-REPORT-TO-AUTHORITIES"),
 ]
 

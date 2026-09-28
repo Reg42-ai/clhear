@@ -470,15 +470,6 @@ def _llm_propose_hints(gateway, artifacts, missing_spans: list[str]) -> list[dic
     return [h for h in hints if isinstance(h, dict) and h.get("match") and h.get("node_type")]
 
 
-def _record_completeness_artifact(engine, meta, summary, job_id):
-    digest = summary.get("content_hash")
-    if not digest:
-        return
-    from app.clhear.l1 import poc_review
-    vid = job_id if isinstance(job_id, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", job_id) else "completeness-artifact"
-    poc_review.record_restricted_artifact(engine, meta, digest, verification_id=vid)
-
-
 def ingest(engine: Engine, adapter: Adapter, store: ArtifactStore, **kwargs) -> dict:
     """Worker entrypoint: evidence is scoped to this acquisition only."""
     from app.clhear.l1 import http as l1_http
@@ -657,40 +648,6 @@ def _ingest_recorded(engine, adapter, store, recorder, meta, settings, *, trigge
                 "source_version_id": previous.id if previous else None,
             })
             return {**outputs, "run_id": recorder.run_id}
-        from app.clhear.l1.adapters.finra_document import NavigationPage
-        if isinstance(exc, NavigationPage):
-            # Discovered container page: structure only, children hold the text.
-            outputs = recorder.finish("catalog-page", {
-                "source": meta.source_key, "freshness": "live" if l1_http.publisher_checked_at() else "not_checked",
-                "error_type": "NavigationPage", "note": str(exc)[:200],
-                "previous_version_preserved": previous is not None,
-                "source_version_id": previous.id if previous else None,
-            })
-            return {**outputs, "run_id": recorder.run_id}
-        if isinstance(exc, ValueError) and str(exc).startswith("FINRA duplicate paragraph reference"):
-            # Live 21 Sep 2026: 4210(f)(1), 4540(a), 6622(d)(1). Parse residue
-            # is listed, not a retryable fetch crash.
-            outputs = recorder.finish("not-fully-successful", {
-                "source": meta.source_key, "freshness": "live" if l1_http.publisher_checked_at() else "not_checked",
-                "error_type": "DuplicateParagraph", "note": str(exc)[:200],
-                "previous_version_preserved": previous is not None,
-                "source_version_id": previous.id if previous else None,
-            })
-            return {**outputs, "run_id": recorder.run_id}
-        from app.clhear.l1.inventory import official_nyse_leaf, unpublished_finra_path
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-        leaf_url = getattr(adapter, "_url", None) or getattr(meta, "canonical_url", "")
-        if status == 404 and (official_nyse_leaf(leaf_url) or unpublished_finra_path(leaf_url)):
-            # Series titles name a range; not every integer in 45–299C is a
-            # published article. Numbered FINRA 4554/6470 and leftover hashed
-            # notice 26-10 also 404. Publisher-absent residue, not a parser crash.
-            outputs = recorder.finish("not-published", {
-                "source": meta.source_key, "freshness": "live" if l1_http.publisher_checked_at() else "not_checked",
-                "error_type": "HTTP404", "note": "Official FINRA rulebook or notice path is not published",
-                "previous_version_preserved": previous is not None,
-                "source_version_id": previous.id if previous else None,
-            })
-            return {**outputs, "run_id": recorder.run_id}
         error = str(exc)[:500]
         log.exception("fetch crashed for %s", meta.source_key)
         if previous is not None:
@@ -787,13 +744,12 @@ def _ingest_recorded(engine, adapter, store, recorder, meta, settings, *, trigge
                 "original_verification": original_proof,
             }
             outputs = recorder.finish("unchanged", summary)
-            _record_completeness_artifact(engine, meta, summary, job_id)
             return {**summary, "status": "unchanged", "run_id": recorder.run_id, "stages": outputs["stages"],
                     **({"authorized_artifact_check": recorder.artifact_check} if recorder.artifact_check else {})}
         recorder.stage("projection_repair", reason="stored projection differs from validated source parse")
     elif (previous is not None and not force and not strict_violations and original_proof["verified"]
           and len(result.artifacts) == 1):
-        # finra.org (and other dynamic publishers) never serve the same bytes
+        # Dynamic publishers never serve the same bytes
         # twice, so the artifact-set hash alone would mint a new version and a
         # zero-clause "amended" event on every daily check. When the validated
         # parse of a single-document page reproduces the stored projection
@@ -823,7 +779,6 @@ def _ingest_recorded(engine, adapter, store, recorder, meta, settings, *, trigge
             }
             recorder.stage("unchanged_text", artifact_bytes_changed=True, observed_content_hash=content_hash)
             outputs = recorder.finish("unchanged", summary)
-            _record_completeness_artifact(engine, meta, summary, job_id)
             return {**summary, "status": "unchanged", "run_id": recorder.run_id, "stages": outputs["stages"]}
 
     # ---- fidelity gate + escalation loop -----------------------------------
@@ -989,7 +944,6 @@ def _ingest_recorded(engine, adapter, store, recorder, meta, settings, *, trigge
                 public_ok=public_ok, protected=protected, permission_checks=permission_checks,
                 parser=identity,
             )
-            _record_completeness_artifact(engine, meta, persisted, job_id)
             return persisted
     except Exception as exc:
         # The raw driver message carries the SQL statement and its parameters;

@@ -28,7 +28,7 @@ _PUBLISHERS = {
     "us-law": ("US Congress / Government Publishing Office", "legislation"),
     "sec": ("US Securities and Exchange Commission", "regulator"),
     "ftc": ("US Federal Trade Commission", "regulator"),
-    "finra": ("FINRA", "regulator"), "fincen": ("FinCEN", "regulator"),
+    "fincen": ("FinCEN", "regulator"),
     "irs": ("US Treasury / Internal Revenue Service", "regulator"),
     "ofac": ("US Treasury OFAC", "regulator"), "nydfs": ("New York DFS", "regulator"),
     "nasdaq": ("Nasdaq", "regulator"), "nist": ("NIST", "standards"),
@@ -53,7 +53,7 @@ _PUBLISHERS = {
 }
 _PREFIXES = {
     "celex/": ("eu-law",), "esma/": ("esma",), "ukpga/": ("uk-law",), "uksi/": ("uk-law",), "eur/": ("uk-law",),
-    "fca/": ("fca",), "finra/": ("finra",),     "sec/": ("sec",), "usc/15/": ("us-law",),
+    "fca/": ("fca",), "sec/": ("sec",), "usc/15/": ("us-law",),
     "usc/26/": ("us-law", "irs"), "cfr/17/": ("sec",), "cfr/26/": ("irs",), "cfr/31/": ("fincen",),
     "cfr/16/": ("ftc",), "ftc/": ("ftc",),
     "nasdaq/": ("nasdaq",), "nydfs/": ("nydfs",), "nist/": ("nist",), "cy/": ("cysec",),
@@ -100,8 +100,8 @@ def publisher_profiles(entries=None):
                        "boundaries": deepcopy(BOUNDARIES), "categories": categories,
                        "declared_source_keys": sorted(e["key"] for e in members[key]),
                        "known_reference_urls": sorted({e["canonical_url"] for e in members[key] if e.get("canonical_url")}),
-                       "discovery_adapter": "finra_catalog" if key == "finra" else CONTRACTS[key]["adapter"] if key in CONTRACTS else "legislation_metadata_catalog" if key in REFERENCES else "publisher_publication_library" if key in LIBRARIES else "official_pdf_link_catalog" if key in CATALOG_SOURCES else None,
-                       "catalog_status": "configured" if key == "finra" else "partial_category_support" if key in CATALOG_SOURCES or key in CONTRACTS or key in LIBRARIES or key in REFERENCES else "catalog_adapter_required",
+                       "discovery_adapter": CONTRACTS[key]["adapter"] if key in CONTRACTS else "legislation_metadata_catalog" if key in REFERENCES else "publisher_publication_library" if key in LIBRARIES else "official_pdf_link_catalog" if key in CATALOG_SOURCES else None,
+                       "catalog_status": "partial_category_support" if key in CATALOG_SOURCES or key in CONTRACTS or key in LIBRARIES or key in REFERENCES else "catalog_adapter_required",
                        "artifact_acquisition": "reviewed_authorized_artifact" if kind == "licensed_standards" else "reviewed_official_source",
                        "contract_references": CONTRACTS.get(key, {}).get("references", REFERENCES.get(key, LIBRARIES.get(key, {}).get("references", []))),
                        "catalog_routes": LIBRARIES.get(key, {}).get("roots", {}),
@@ -114,7 +114,7 @@ def publisher_profiles(entries=None):
 
 def profiles_for_scope(scope, entries=None):
     profiles = publisher_profiles(entries)
-    return [p for p in profiles if p["publisher_id"] == "finra"] if scope == "finra" else profiles
+    return profiles
 
 
 def coverage_findings(profiles):

@@ -41,7 +41,6 @@ ADAPTER_KEYS = (
 PUBLISHER_ADAPTER_CLASSES = {
     "fca_handbook": "app.clhear.l1.adapters.fca_handbook:FcaHandbookAdapter",
     "sec_edgar": "app.clhear.l1.adapters.sec_edgar:SecEdgarAdapter",
-    "finra": "app.clhear.l1.adapters.sec_edgar:SecEdgarAdapter",
     "esma": "app.clhear.l1.adapters.standards_bodies:EsmaAdapter",
     "fatf": "app.clhear.l1.adapters.standards_bodies:FatfAdapter",
     "bis_basel": "app.clhear.l1.adapters.standards_bodies:BisBaselAdapter",
@@ -53,7 +52,6 @@ PUBLISHER_ADAPTER_CLASSES = {
     # HLD v2 §4.7 enforcement sources (read by L7; informative family members)
     "fca_enforcement": "app.clhear.l1.adapters.enforcement:FcaFinalNoticesAdapter",
     "sec_enforcement": "app.clhear.l1.adapters.enforcement:SecEnforcementAdapter",
-    "finra_enforcement": "app.clhear.l1.adapters.enforcement:FinraDisciplinaryAdapter",
 }
 
 

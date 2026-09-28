@@ -43,7 +43,7 @@ jobs:
               "api_compatible_with": ["v1"],
               "image": f"ghcr.io/reg42-ai/clhear@{digest}",
               "schema_revision_from": "0040",
-              "schema_revision_to": "0040",
+              "schema_revision_to": "0041",
               "migrations_reversible": False,
               "breaking": False,
               "changelog_url": f"https://github.com/Reg42-ai/clhear/releases/tag/{tag}",

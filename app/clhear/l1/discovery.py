@@ -109,9 +109,11 @@ def _terminal_resolution(conn, source_key, url):
         return "checked", result
     if permissions.decision(conn, source_key, "acquire").get("reason") == "not_approved":
         result["findings"].append({"code": "publisher_permission_denied",
-            "detail": "The publisher explicitly denied acquisition; the operator exception does not apply."})
+            "detail": "The publisher explicitly denied acquisition."})
         return "permission_blocked", {**result, "publisher_denied": True}
-    return "awaiting_exception_binding", result
+    result["findings"].append({"code": "permission_unverified",
+        "detail": "Acquisition needs an explicit publisher permission before the import may run."})
+    return "permission_blocked", result
 
 
 def _close_without_fetch(conn, page, mode):
@@ -201,7 +203,7 @@ def run_batch(engine, store, *, publisher_id, profile, seeds, job_id, fetcher, c
                 uri = store.put(f"restricted/_l1_inventory/{digest}.bin", body, "application/octet-stream")
                 result["artifact"] = {"sha256": digest, "byte_count": len(body), "artifact_uri": uri,
                                       "permissions": {op: {k: v.get(k) for k in (
-                                          "allowed", "permission_id", "authority_type", "exception_id", "binding_id", "release_eligible")}
+                                          "allowed", "permission_id", "authority_type", "release_eligible")}
                                           for op, v in choices.items()},
                                       "origin": origin, "publisher_checked_at": datetime.now(timezone.utc).isoformat() if origin == "live" else None}
                 if origin != "live":
@@ -260,8 +262,6 @@ def run_batch(engine, store, *, publisher_id, profile, seeds, job_id, fetcher, c
                     status, result_row = _terminal_resolution(conn, link["source_key"], link["url"])
                     row.update(status=status, result=result_row, checked_at=datetime.now(timezone.utc))
                 _insert_once(conn, pages, row)
-    from app.clhear.l1.finra_private_review import request_frontier_bindings
-    request_frontier_bindings(engine, cycle_id)
     return read_cycle(engine, cycle_id)
 
 

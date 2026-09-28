@@ -57,7 +57,7 @@ def _field(meta, name: str, default=""):
 
 
 def required_for(meta) -> bool:
-    """Require explicit grants for FINRA and restricted sources/ingestors.
+    """Require explicit grants for licensed-standard and restricted sources/ingestors.
 
     Known protected namespaces remain protected even if adapter/licence labels
     change. There are no test, demo, host, or synthetic-namespace exemptions.
@@ -66,9 +66,8 @@ def required_for(meta) -> bool:
     adapter = str(_field(meta, "adapter")).lower()
     host = (urlparse(str(_field(meta, "canonical_url"))).hostname or "").lower()
     return (
-        key.split("/", 1)[0] in {"finra", "iso", "aicpa", "pci", "ifrs"}
-        or adapter in {"finra", "finra_enforcement", "restricted_file"}
-        or host == "finra.org" or host.endswith(".finra.org")
+        key.split("/", 1)[0] in {"iso", "aicpa", "pci", "ifrs"}
+        or adapter == "restricted_file"
         or str(_field(meta, "license")).lower() == "restricted"
     )
 
@@ -201,24 +200,16 @@ def decision(conn: Connection, source_key: str, operation: str, now: datetime | 
 
 def candidate_decision(conn: Connection, source_key: str, operation: str,
                        now: datetime | str | None = None, *, canonical_url: str | None = None) -> dict:
-    """Private candidate use only. Strict publisher permissions remain separate.
+    """Candidate-use decision: the strict publisher permission, labelled.
 
-    This helper must never authorize a release, public export or model use via
-    an operator exception. A namespaced permission_id is a comparison token,
-    not a source_permissions row or a claim of publisher authorization.
+    Only a recorded publisher permission authorizes an operation.
     """
     strict = decision(conn, source_key, operation, now=now)
     if strict["allowed"]:
         return {**strict, "authority_type": "publisher_permission", "release_eligible": True}
     if strict.get("reason") == "not_approved":
         # A publisher's explicit denial is a decision, not an absence of evidence.
-        # No operator exception may stand in for it, even for private review.
         return {**strict, "authority_type": "publisher_permission", "release_eligible": False, "denied": True}
-    from app.clhear.l1 import operator_exceptions
-    if operation in operator_exceptions.OPERATIONS:
-        candidate = operator_exceptions.decision(conn, source_key, operation, now=now, canonical_url=canonical_url)
-        if candidate["allowed"]:
-            return {**candidate, "publisher_permission": strict}
     return {**strict, "authority_type": "publisher_permission", "release_eligible": False}
 
 

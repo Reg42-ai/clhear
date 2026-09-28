@@ -30,13 +30,12 @@
       "taxonomy": "PSD2 Annex I payment services; EMD2 e-money issuance"
     },
     {
-      "key": "sec_finra",
-      "name": "SEC / FINRA registers (BrokerCheck, IAPD, EDGAR)",
+      "key": "sec_registers",
+      "name": "SEC registers (IAPD, EDGAR, Form BD)",
       "jurisdiction": "US",
-      "regulator": "SEC / FINRA",
-      "url": "https://brokercheck.finra.org/",
-      "api": "https://api.brokercheck.finra.org/search/firm",
-      "taxonomy": "Exchange Act §15(b) broker-dealer registration; Advisers Act §203; FINRA membership"
+      "regulator": "SEC",
+      "url": "https://www.sec.gov/about/divisions-offices/division-trading-markets/broker-dealers",
+      "taxonomy": "Exchange Act §15(b) broker-dealer registration; Advisers Act §203"
     },
     {
       "key": "fincen_msb",
@@ -81,7 +80,6 @@
       "name": "United States",
       "regulators": [
         "SEC",
-        "FINRA",
         "FinCEN",
         "CFTC / NFA",
         "state regulators"
@@ -388,7 +386,7 @@
       "regulator": "SEC",
       "name": "SEC-registered broker-dealer (Exchange Act s.15(b))",
       "regime": "Securities Exchange Act of 1934, s.15(b); Form BD",
-      "register": "sec_finra",
+      "register": "sec_registers",
       "register_ref": "Broker-Dealer (Form BD)",
       "aliases": [
         "broker-dealer",
@@ -397,23 +395,12 @@
       "clause_anchors": []
     },
     {
-      "id": "LIC:US:finra-member",
-      "jurisdiction": "US",
-      "regulator": "FINRA",
-      "name": "FINRA member firm",
-      "regime": "Exchange Act s.15(b)(8); FINRA By-Laws Art. III",
-      "register": "sec_finra",
-      "register_ref": "FINRA membership",
-      "aliases": [],
-      "clause_anchors": []
-    },
-    {
       "id": "LIC:US:carrying-broker-dealer",
       "jurisdiction": "US",
       "regulator": "SEC",
       "name": "Carrying / clearing broker-dealer (Rule 15c3-3)",
       "regime": "17 CFR 240.15c3-3",
-      "register": "sec_finra",
+      "register": "sec_registers",
       "register_ref": "Carrying firm",
       "aliases": [
         "clearing broker",
@@ -427,7 +414,7 @@
       "regulator": "SEC",
       "name": "SEC-registered investment adviser (Advisers Act s.203)",
       "regime": "Investment Advisers Act of 1940, s.203; Form ADV",
-      "register": "sec_finra",
+      "register": "sec_registers",
       "register_ref": "Investment Adviser (Form ADV)",
       "aliases": [
         "RIA"
@@ -983,12 +970,12 @@
     {
       "licence_id": "LIC:US:sec-broker-dealer",
       "product_id": "PRD:listed-options-futures",
-      "basis": "Options on securities under Exchange Act; FINRA Rule 2360"
+      "basis": "Options on securities under the Exchange Act"
     },
     {
       "licence_id": "LIC:US:sec-broker-dealer",
       "product_id": "PRD:margin-lending",
-      "basis": "Regulation T; FINRA Rule 4210"
+      "basis": "Regulation T"
     },
     {
       "licence_id": "LIC:US:sec-broker-dealer",
@@ -998,7 +985,7 @@
     {
       "licence_id": "LIC:US:sec-broker-dealer",
       "product_id": "PRD:research",
-      "basis": "FINRA Rule 2241"
+      "basis": "Exchange Act research analyst rules"
     },
     {
       "licence_id": "LIC:US:carrying-broker-dealer",
@@ -1274,26 +1261,6 @@
           "ref": "art_2"
         }
       ]
-    },
-    {
-      "id": "VR:us-broker-dealer-requires-finra",
-      "name": "A US broker-dealer dealing with the public is a FINRA member",
-      "jurisdiction": "US",
-      "severity": "error",
-      "rule": {
-        "if": {
-          "authorisations": "SEC-registered broker-dealer (Exchange Act s.15(b))",
-          "customer_base": [
-            "retail",
-            "accredited investor"
-          ]
-        },
-        "requires": {
-          "authorisations": "FINRA member firm"
-        }
-      },
-      "basis": "Exchange Act s.15(b)(8): a registered broker-dealer must be a member of a registered securities association.",
-      "clause_anchors": []
     },
     {
       "id": "VR:us-custody-requires-carrying",

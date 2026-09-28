@@ -85,15 +85,6 @@ class AdapterRunIncomplete(RuntimeError):
     """Persisted candidate work is resumable; this event has not succeeded."""
 
 
-def _rulebook_import_entry(entry, adapter):
-    """Identity used to decide whether a planned FINRA document is fetched."""
-    meta = adapter.meta()
-    row = dict(entry or {})
-    row.setdefault("key", getattr(meta, "source_key", None))
-    row.setdefault("canonical_url", getattr(meta, "canonical_url", None) or "")
-    return row
-
-
 def run_adapter_fleet(
     engine: Engine, adapter_key: str, gateway: Gateway | None = None, *,
     force_nightly: bool = False, nightly_only: bool = False,
@@ -108,8 +99,7 @@ def run_adapter_fleet(
 
     ``source_keys`` fixes the scope to exactly those registered documents and
     ``discover=False`` keeps the inventory audit from expanding the frontier:
-    deployment verification runs that way, because newly discovered documents
-    need L0 bindings that a deployment with L0 stopped cannot provide.
+    a host scope build runs that way, so only the declared documents import.
     """
     from app.clhear.l1 import families, inventory, pipeline, source_registry, workflow
     from app.clhear.l1.adapters import CITATOR_KEYS
@@ -127,10 +117,10 @@ def run_adapter_fleet(
     job_id = job_id or workflow.job_id_for(event_key, adapter_key)
     job = workflow.ensure_job(engine, job_id, adapter_key, trigger, event_key)
     workflow.update_job(engine, job_id, "running")
-    scope = cycle_context["scope"] if cycle_context else ("finra" if adapter_key.startswith("finra") else "registered")
+    scope = cycle_context["scope"] if cycle_context else "registered"
     fixed_scope = sorted(set(source_keys)) if source_keys is not None else None
     if discover is None:
-        discover = adapter_key == "finra" and fixed_scope is None
+        discover = False
     statuses, failures = {}, []
     try:
         with workflow.bind_execution(engine, job_id):
@@ -142,9 +132,7 @@ def run_adapter_fleet(
                 before = ({"inventory_hash": cycle_context["inventory_hash"], "audit_id": None} if frozen_cycle else
                           inventory.run_inventory_audit(engine, store, job_id=job_id, scope=scope, discover=bool(discover)))
                 step.details.update(audit_id=before.get("audit_id"), inventory_hash=before.get("inventory_hash"))
-        from app.clhear.l1.poc_review import enabled as completeness_enabled
-        plan = [(entry, adapter) for entry, adapter in fleet_plan(adapter_key)
-                if completeness_enabled() or adapter.meta().source_key != "finra/rulebook"]
+        plan = list(fleet_plan(adapter_key))
         seen = {adapter.meta().source_key for _, adapter in plan}
         if fixed_scope is None:
             for entry in inventory.planned_entries(engine, scope=scope, adapter_key=adapter_key,
@@ -206,12 +194,6 @@ def run_adapter_fleet(
                                 step.status = "blocked"
                             summary = {"status": "source-blocked", "source": source_key,
                                        "declaration_gap": adapter.declaration_gap, "freshness": "not_checked"}
-                        elif not inventory.rulebook_import(_rulebook_import_entry(entry, adapter)):
-                            # A frozen registered job can still list leaked
-                            # notices/filings. Do not fetch them on a rulebook cycle.
-                            with workflow.stage("acquisition_parse", {"source": source_key, "skipped": "finra_rulebook_only"}) as step:
-                                step.status = "blocked"
-                            summary = {"status": "out-of-scope", "source": source_key, "reason": "finra_rulebook_only"}
                         else:
                             summary = pipeline.ingest(engine, adapter, store, trigger=trigger, gateway=gateway,
                                                       job_id=job_id, index_embeddings=False)
@@ -290,9 +272,8 @@ def run_adapter_fleet(
                 def passed(checks):
                     return bool(checks) and all(row.get("passed") and not row.get("scores", {}).get("not_evaluated")
                                                and not row.get("scores", {}).get("n/a") for row in checks)
-                # FINRA's candidate gate is its own full scope. Global suites
-                # remain visible release blockers until all registered L1 is ready.
-                # E1–E7 remain transparent diagnostic evidence. Some legitimately
+                # Global suites remain visible release blockers until all
+                # registered L1 is ready. E1–E7 remain transparent diagnostic evidence. Some legitimately
                 # have no historical amendment fixture on a first version. The
                 # acceptance audit supplies mandatory original/binding checks.
                 mandatory = [boundary]
@@ -391,15 +372,6 @@ def handle_adapter_run(engine: Engine, gateway: Gateway, envelope: Envelope) -> 
     return result
 
 
-RETIRED_DEMO_DERIVE = {"status": "retired",
-                       "reason": "The demo corpus is built from L1 up in its own database by app.clhear.scope_build."}
-
-
-def handle_demo_derive(engine: Engine, gateway: Gateway, envelope: Envelope) -> dict:
-    """Retired: a queued request from before the scoped build is acknowledged, not run."""
-    return dict(RETIRED_DEMO_DERIVE)
-
-
 def handle_l1_cycle_requested(engine, gateway, envelope):
     from app.clhear.l1 import cycles
     return cycles.start(engine, envelope)
@@ -408,13 +380,6 @@ def handle_l1_cycle_requested(engine, gateway, envelope):
 def handle_l1_cycle_advance(engine, gateway, envelope):
     from app.clhear.l1 import cycles
     return cycles.advance(engine, envelope.payload["cycle_id"])
-
-
-def handle_l1_exception_bindings(engine, gateway, envelope):
-    from app.clhear.l1 import finra_private_review, operator_access
-    result = finra_private_review.bind_frontier(engine, envelope.payload["discovery_cycle_id"])
-    operator_access.publish_configured_control(engine)
-    return result
 
 
 def _cycle_store():
@@ -443,13 +408,6 @@ def handle_l1_cycle_discovery(engine, gateway, envelope):
                                                   discovery_cycle_date=cycles.discovery_date(state))
             step.details.update(audit_id=audit["audit_id"], inventory_hash=audit["inventory_hash"])
         result = cycles.discovered(engine, cycle_id, audit)
-        from app.clhear.l1.poc_review import approve_inventory, enabled as completeness_enabled
-        if completeness_enabled() and result.get("status") == "planned" and audit.get("inventory_hash"):
-            try:
-                approve_inventory(engine, audit["inventory_hash"], verification_id=cycle_id,
-                                  evidence_ref="poc:private-completeness-scope")
-            except Exception:  # noqa: BLE001 — cycle continues; review is best-effort
-                pass
         workflow.update_job(engine, job_id, "running" if result["status"] == "discovering" else "completed_for_review", result)
         return result
     except Exception as exc:
@@ -599,11 +557,6 @@ def handle_l1_evidence_review(engine: Engine, gateway: Gateway, envelope: Envelo
     payload = dict(envelope.payload or {})
     kind = payload.pop("review_kind", None)
     from app.clhear.l1.viewer_snapshot import request_refresh
-    if kind == "operator_exception":
-        from app.clhear.l1 import operator_access
-        # Revoke the small live control first. If the database mutation or its
-        # replacement control publication fails, old snapshots remain denied.
-        invalidation = operator_access.invalidate_configured_control(mutation_id=envelope.event_id)
     # The review and its refresh request commit together. A revoked grant must
     # never become durable without the outbox work that updates the viewer.
     with engine.begin() as conn:
@@ -617,14 +570,9 @@ def handle_l1_evidence_review(engine: Engine, gateway: Gateway, envelope: Envelo
             from app.clhear.l1.translation import record_language_binding
             record = record_language_binding(conn, **payload)
             record = {key: value.isoformat() if isinstance(value, (datetime, date)) else value for key, value in record.items()}
-        elif kind == "operator_exception":
-            from app.clhear.l1 import operator_exceptions
-            record = operator_exceptions.record_exception(conn, **payload)
         else:
-            raise ValueError("review_kind must be permissions, artifact, scope, language or operator_exception")
+            raise ValueError("review_kind must be permissions, artifact, scope or language")
         request_refresh(conn, reason="source_evidence_updated")
-    if kind == "operator_exception":
-        operator_access.publish_configured_control(engine, invalidation_token=invalidation.get("invalidation_token"))
     return {"review_kind": kind, "record": record, "requires_new_audit": True}
 
 
@@ -772,12 +720,10 @@ def l6_on_changed(engine: Engine, payload: dict, *, layer: str) -> dict:
 HANDLERS = {
     "DummyChanged": handle_dummy_changed,
     "AdapterRunRequested": handle_adapter_run,
-    "DemoDeriveRequested": handle_demo_derive,
     "L1CycleRequested": handle_l1_cycle_requested,
     "L1CycleAdvanceRequested": handle_l1_cycle_advance,
     "L1CycleDiscoveryRequested": handle_l1_cycle_discovery,
     "L1CycleEvaluationRequested": handle_l1_cycle_evaluation,
-    "L1ExceptionBindingsRequested": handle_l1_exception_bindings,
     "PublishReleaseRequested": handle_publish_release,
     "L1InventoryAuditRequested": handle_l1_inventory_audit,
     "L1EvidenceReviewRecorded": handle_l1_evidence_review,
@@ -1187,52 +1133,18 @@ def cli(argv=None) -> int:
     parser = WorkerArgumentParser(description="CLHEAR worker: SQS consumer or one durable manual envelope")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--envelope-file")
-    parser.add_argument("--verify-deployment", choices=("bootstrap", "verify", "publish"))
     parser.add_argument("--verification-id")
     parser.add_argument("--request-l1-cycle", action="store_true")
-    parser.add_argument("--request-demo-import", action="store_true")
-    parser.add_argument("--derive-demo", action="store_true")
     parser.add_argument("--unchanged-repeat", action="store_true")
-    parser.add_argument("--scope", choices=("all_publishers", "registered", "finra"), default="all_publishers")
+    parser.add_argument("--scope", choices=("all_publishers", "registered"), default="all_publishers")
     parser.add_argument("--recover-queues", action="store_true")
-    parser.add_argument("--poc-private-review", choices=("activate", "revoke"))
-    parser.add_argument("--approve-inventory")
-    parser.add_argument("--evidence-ref")
     parser.add_argument("--max-messages", type=int, default=None)
     parser.add_argument("--max-seconds", type=int, default=None)
     parser.add_argument("--queues", default="")
     args = parser.parse_args(argv)
-    exclusive = [bool(args.recover_queues), bool(args.request_l1_cycle), bool(args.request_demo_import),
-                 bool(args.derive_demo), bool(args.verify_deployment), bool(args.once),
-                 bool(args.poc_private_review), bool(args.approve_inventory)]
+    exclusive = [bool(args.recover_queues), bool(args.request_l1_cycle), bool(args.once)]
     if sum(exclusive) > 1:
         parser.error("choose one worker action")
-    if args.poc_private_review:
-        if not args.verification_id or not args.evidence_ref:
-            parser.error("--poc-private-review requires --verification-id and --evidence-ref")
-        if os.environ.get("CLHEAR_FLEET", "").lower() != "l0":
-            parser.error("--poc-private-review must run on the L0 worker")
-        from app.clhear.db import get_engine, run_migrations
-        from app.clhear.l1.poc_review import apply_private_review
-        engine = get_engine()
-        run_migrations(engine)
-        result = apply_private_review(engine, args.poc_private_review, args.evidence_ref,
-                                      verification_id=args.verification_id)
-        print(json.dumps(result, default=str))
-        return 0 if result.get("status") == "recorded" else 1
-    if args.approve_inventory:
-        if not args.verification_id:
-            parser.error("--approve-inventory requires --verification-id")
-        if os.environ.get("CLHEAR_FLEET", "").lower() != "l0":
-            parser.error("--approve-inventory must run on the L0 worker")
-        from app.clhear.db import get_engine, run_migrations
-        from app.clhear.l1.poc_review import approve_inventory
-        engine = get_engine()
-        run_migrations(engine)
-        result = approve_inventory(engine, args.approve_inventory, verification_id=args.verification_id,
-                                   evidence_ref=args.evidence_ref or "poc:private-scope-review")
-        print(json.dumps(result, default=str))
-        return 0 if result.get("status") in {"recorded", "already_recorded"} else 1
     if args.recover_queues:
         if not args.verification_id:
             parser.error("--recover-queues requires --verification-id and cannot be combined with other actions")
@@ -1253,29 +1165,8 @@ def cli(argv=None) -> int:
         run_migrations(engine)
         print(json.dumps(request_cycle(engine, args.verification_id, scope=args.scope, unchanged_repeat=args.unchanged_repeat)))
         return 0
-    if args.request_demo_import:
-        if not args.verification_id:
-            parser.error("--request-demo-import requires --verification-id and cannot be combined with other actions")
-        if os.environ.get("CLHEAR_FLEET", "").lower() != "l0":
-            parser.error("--request-demo-import must run on the L0 worker")
-        from app.clhear.db import get_engine, run_migrations
-        from app.clhear.demo_corpus import request_demo_import
-        engine = get_engine()
-        run_migrations(engine)
-        print(json.dumps(request_demo_import(engine, args.verification_id)))
-        return 0
-    if args.derive_demo:
-        print(json.dumps(RETIRED_DEMO_DERIVE))
-        return 0
-    if args.verify_deployment:
-        if not args.verification_id:
-            parser.error("--verify-deployment requires --verification-id and cannot be combined with --once")
-        from app.clhear.deployment_verification import execute
-        result = execute(args.verify_deployment, args.verification_id)
-        print(json.dumps(result, default=str))
-        return result["exit_code"]
     if args.verification_id:
-        parser.error("--verification-id requires --verify-deployment")
+        parser.error("--verification-id requires --request-l1-cycle or --recover-queues")
     if args.once != bool(args.envelope_file):
         parser.error("--once and --envelope-file must be supplied together")
     if args.once:

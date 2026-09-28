@@ -27,6 +27,9 @@ TERMS = (
     _term("cfr-17-", "ia-marketing"),
     _term("influ", "encer"),
     _term("eto", "ro"),
+    _term("fin", "ra"),
+    _term("poc_", "review"),
+    _term("CLHEAR-", "MVP"),
 )
 
 

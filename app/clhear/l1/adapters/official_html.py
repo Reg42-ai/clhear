@@ -2,7 +2,7 @@
 # This file is part of CLHEAR. See LICENSE (AGPL-3.0-only).
 """Official HTML page adapter: fetch a publisher page, emit a DocNode tree.
 
-Used for Class B publishers (FCA, AU, SG, FINRA, ADGM, NYDFS, Nasdaq, Malta,
+Used for Class B publishers (FCA, AU, SG, ADGM, NYDFS, Nasdaq, Malta,
 UAE) and any other registry row whose official artifact is HTML. The oracle
 is a dumb visible-text walk of the same page after chrome (script/style/nav/
 header/footer) is stripped — it does not share the structural grouping logic.

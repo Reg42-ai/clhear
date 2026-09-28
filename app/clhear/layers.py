@@ -171,7 +171,7 @@ LAYER_CATALOG: dict[str, dict] = {
         "derivation": {
             "inputs": ["L1", "L2"],
             "method": "The ontology is built from public regulator registers and permission "
-            "taxonomies (FCA register / RAO, ESMA and EBA registers, SEC / FINRA, FinCEN, NFA) held "
+            "taxonomies (FCA register / RAO, ESMA and EBA registers, SEC, FinCEN, NFA) held "
             "as a reviewed snapshot and cross-checked against the live registers each night; every "
             "row carries its register URL and reference. Validity rules (licence foundations, "
             "product permits, regime flags) are read from the same instruments. Applicability "

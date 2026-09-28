@@ -110,17 +110,14 @@ def run_suite(engine: Engine, suite: str, source_key: str | None = None, release
             with engine.connect() as conn:
                 current = {op: permissions.candidate_decision(conn, source_key, op, canonical_url=source["canonical_url"])
                            for op in candidate_permissions}
-            fields = ("allowed", "permission_id", "authority_type", "exception_id", "activation_id", "binding_id", "binding_hash")
+            fields = ("allowed", "permission_id", "authority_type")
             if any(tuple(current[op].get(k) for k in fields) != tuple(choice.get(k) for k in fields)
                    for op, choice in candidate_permissions.items()):
                 passed = False
                 scores["binding_error"] = "Candidate authorization changed during evaluation; rerun required"
-            exception_used = bool(scores.get("operator_exception_used")) or any(
-                choice.get("authority_type") == "operator_exception" and choice["allowed"] for choice in candidate_permissions.values())
-            scores.update(operator_exception_used=exception_used,
-                          release_eligible=not exception_used and all(choice["allowed"] for choice in publisher_permissions.values()),
+            scores.update(release_eligible=all(choice["allowed"] for choice in publisher_permissions.values()),
                           publisher_permissions=publisher_permissions, candidate_permissions=candidate_permissions,
-                          evaluation_scope="technical_candidate" if exception_used else "publisher_authorized")
+                          evaluation_scope="publisher_authorized")
     record = {
         "suite": suite,
         "source_key": source_key,
@@ -249,7 +246,7 @@ def e2_completeness(engine: Engine, source_key: str | None) -> tuple[dict, bool]
     from app.clhear.l1.inventory import source_inventory_evidence
     inventory = source_inventory_evidence(engine, source_key)
     if inventory.get("audit_id"):
-        technical = bool(inventory.get("technical_verified")) if inventory.get("operator_exception_used") else bool(inventory.get("verified"))
+        technical = bool(inventory.get("verified"))
         return {"audit_id": inventory["audit_id"], "inventory_hash": inventory["inventory_hash"],
                 "nodes": inventory.get("node_count", 0), "clauses": inventory.get("clause_count", 0),
                 "scope_verified": inventory.get("scope_verified", False),
@@ -257,7 +254,6 @@ def e2_completeness(engine: Engine, source_key: str | None) -> tuple[dict, bool]
                 "technical_verified": technical,
                 "publisher_permissions_resolved": all(inventory.get("permissions", {}).get(op, {"allowed": True})["allowed"]
                                                       for op in ("acquire", "store", "parse")),
-                "operator_exception_used": inventory.get("operator_exception_used", False),
                 "release_eligible": inventory.get("release_eligible", inventory.get("verified", False)),
                 "findings": inventory.get("findings", []),
                 "method": "Worker reconciliation of exact artifacts, stored version, tree and clauses; technical evidence is separate from publisher permission"}, technical
@@ -639,8 +635,6 @@ def _golden_adapter(case: dict):
     cls = publisher_adapter_class(key)
     if key == "fca_handbook":
         return cls(case.get("sourcebook", "PRIN"), chapters=case.get("chapters"), **kwargs)
-    if key in {"sec_edgar", "finra"}:
-        return cls(channel=case.get("channel", "finra" if key == "finra" else "sec"), **kwargs)
     return cls(**kwargs)
 
 
@@ -1700,14 +1694,12 @@ def latest_source_scorecard(engine: Engine, source_key: str, source_version_id: 
             "ran_at": str(row.ran_at),
         }
     open_ok = all(latest[s]["passed"] for s in SOURCE_SUITES if s in latest) if latest else False
-    exception_used = any(row["scores"].get("operator_exception_used") for row in latest.values())
     technical_green = open_ok and len(latest) == len(SOURCE_SUITES)
     return {"source_key": source_key, "source_version_id": source_version_id,
             "suites": latest, "missing_suites": [s for s in SOURCE_SUITES if s not in latest],
-            "green": technical_green, "technical_green": technical_green, "operator_exception_used": exception_used,
-            "release_eligible": technical_green and not exception_used and all(row["scores"].get("release_eligible", True) for row in latest.values()),
-            "notice": ("Private technical checks used an operator exception. Publisher permissions remain unresolved; this does not authorize an accepted release. " if exception_used else "")
-                      + "Checks apply only to this stored version. Parser consistency alone does not prove complete publisher scope."}
+            "green": technical_green, "technical_green": technical_green,
+            "release_eligible": technical_green and all(row["scores"].get("release_eligible", True) for row in latest.values()),
+            "notice": "Checks apply only to this stored version. Parser consistency alone does not prove complete publisher scope."}
 
 
 GLOBAL_SUITES = ("l0_smoke", "l1_fidelity")

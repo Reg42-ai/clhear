@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 
 from app.clhear.platform.manifest import check_manifest, frozen_model_ids
 
-TRUSTED_RELEASE_IDENTITY = "https://github.com/Reg42-ai/CLHEAR-MVP/.github/workflows/release.yml@refs/heads/main"
+TRUSTED_RELEASE_IDENTITY = "https://github.com/Reg42-ai/clhear/.github/workflows/release.yml@refs/heads/main"
 TRUSTED_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 
 

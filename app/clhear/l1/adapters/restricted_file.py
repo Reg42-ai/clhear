@@ -115,26 +115,10 @@ class RestrictedFileAdapter:
         files = _list_restricted_objects(self._source_key)
         from_url = False
         if not files:
-            from app.clhear.l1.poc_review import enabled
-            if enabled() and self._url:
-                from app.clhear.l1 import http
-                body = http.get(self._url)
-                if not body:
-                    raise FileNotFoundError(
-                        f"Awaiting authorized source artifact for {self._source_key}; provide the actual licensed file "
-                        "after recording explicit acquire/store/parse permissions. No placeholder version was ingested."
-                    )
-                name = self._url.rstrip("/").rsplit("/", 1)[-1] or "acquired"
-                ctype = "application/pdf" if body[:5] == b"%PDF-" else (
-                    "text/html" if b"<html" in body[:4000].lower() or b"<!doctype" in body[:200].lower()
-                    else "application/octet-stream")
-                files = [(name, body, ctype)]
-                from_url = True
-            else:
-                raise FileNotFoundError(
-                    f"Awaiting authorized source artifact for {self._source_key}; provide the actual licensed file "
-                    "after recording explicit acquire/store/parse permissions. No placeholder version was ingested."
-                )
+            raise FileNotFoundError(
+                f"Awaiting authorized source artifact for {self._source_key}; provide the actual licensed file "
+                "after recording explicit acquire/store/parse permissions. No placeholder version was ingested."
+            )
         if len(files) != 1:
             raise ValueError(f"Ambiguous artifacts for {self._source_key}: select exactly one authorized source file")
         name, body, ctype = files[0]
