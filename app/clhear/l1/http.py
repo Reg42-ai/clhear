@@ -31,13 +31,9 @@ log = logging.getLogger("clhear.l1.http")
 
 USER_AGENT = "CLHEAR/0.1 (regulatory corpus builder; contact clhear@reg42.ai)"
 DEFAULT_FIXTURES_DIR = "tests/fixtures/http"
-# Minimum seconds between live requests to one publisher host. finra.org
-# answers the identifying UA but rate-limits bursts (429 on 18 Sep 2026 while
-# enumerating the 652-rule index); a browser UA is refused outright (403), so
-# pacing, not disguise, is the remedy. At 2 s finra.org still returned 429
-# after 5-9 requests (19 Sep, cycle 35453100897) and every penalty cost 30-90 s;
-# 4 s ran 12 consecutive pages clean.
-HOST_PACING_S = {"www.finra.org": 4.0, "files.finra.org": 4.0}
+# Minimum seconds between live requests to one publisher host. Publishers that
+# rate-limit bursts get an entry here; pacing, not disguise, is the remedy.
+HOST_PACING_S: dict[str, float] = {}
 RETRY_AFTER_CAP_S = 300.0
 _observations: ContextVar[tuple] = ContextVar("l1_http_observations", default=())
 _response_meta: ContextVar[dict | None] = ContextVar("l1_http_response", default=None)
@@ -127,9 +123,6 @@ def _reviewed_hosts(url, allowed_redirect_hosts):
     if hosts is not None and (not hosts or any(not isinstance(h, str) or not h or h != h.lower()
                                               or any(c in h for c in "/:@?#") for h in hosts)):
         raise PublisherBoundaryError("An exact, nonempty publisher hostname allowlist is required")
-    if (urlsplit(url).hostname or "").lower() in {"www.finra.org", "finra.org"}:
-        finra = frozenset({"www.finra.org", "finra.org"})
-        hosts = finra if hosts is None else hosts & finra
     if hosts is not None:
         _check_publisher_url(url, hosts)
     return hosts
@@ -308,8 +301,7 @@ def get(url: str, timeout: float = 60.0, headers: dict | None = None, *, allowed
     Live mode always contacts the publisher. A valid 304 checks cached bytes;
     an outage can return private last-good bytes but never advances freshness.
     """
-    # A reviewed host contract also protects local caches. FINRA's transport
-    # boundary remains enforced even for legacy callers.
+    # A reviewed host contract also protects local caches.
     hosts = _reviewed_hosts(url, allowed_redirect_hosts)
     guarded_cache = hosts is not None
     mode = _mode()

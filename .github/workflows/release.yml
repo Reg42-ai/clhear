@@ -14,6 +14,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check the tag matches the code
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 - << 'PY'
+          import os, re, sys, tomllib
+          tag = os.environ["TAG"].removeprefix("v")
+          project = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          engine = re.search(r'clhear_engine_version: str = "([^"]+)"', open("app/clhear/settings.py").read()).group(1)
+          if not tag == project == engine:
+              sys.exit(f"tag {tag} does not match pyproject {project} / clhear_engine_version {engine}")
+          PY
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -34,18 +46,22 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           python3 - << 'PY'
-          import json, os
+          import json, os, re
           tag = os.environ["TAG"]
           digest = os.environ["IMAGE_DIGEST"]
+          settings = open("app/clhear/settings.py").read()
+          field = lambda name: re.search(rf'{name}: str = "([^"]+)"', settings).group(1)
           manifest = {
-              "engine_version": tag[1:] if tag.startswith("v") else tag,
-              "api_version": "v1",
+              "engine_version": field("clhear_engine_version"),
+              "api_version": field("clhear_api_version"),
               "api_compatible_with": ["v1"],
               "image": f"ghcr.io/reg42-ai/clhear@{digest}",
+              # The schema of the previous release (0.1.0) and of this one.
               "schema_revision_from": "0040",
-              "schema_revision_to": "0040",
+              "schema_revision_to": field("clhear_schema_revision"),
               "migrations_reversible": False,
-              "breaking": False,
+              # 0.2.0 changes the profile fields (see CHANGELOG "Upgrading from 0.1.0").
+              "breaking": True,
               "changelog_url": f"https://github.com/Reg42-ai/clhear/releases/tag/{tag}",
           }
           with open("release-manifest.json", "w", encoding="utf-8") as fh:

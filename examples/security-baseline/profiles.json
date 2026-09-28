@@ -1,0 +1,18 @@
+{
+  "payments-startup": {
+    "name": "Payments start-up",
+    "attributes": {
+      "jurisdictions": ["EU"],
+      "roles": ["management body"],
+      "conditions": {"processes personal data": true}
+    }
+  },
+  "research-lab": {
+    "name": "Research lab with no personal data",
+    "attributes": {
+      "jurisdictions": ["EU"],
+      "roles": ["management body"],
+      "conditions": {"processes personal data": false}
+    }
+  }
+}

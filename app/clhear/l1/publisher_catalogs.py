@@ -311,8 +311,6 @@ def language_metadata(body, *, publisher_id, document_key, url):
     not every hosted third-party attachment. No metadata => no assertion.
     """
     spec = LIBRARIES.get(publisher_id)
-    if publisher_id == "finra":
-        spec = {"native_languages": ["en"]}
     if publisher_id == "eu-law":
         from app.clhear.l1.structured_catalogs import EU_LANGUAGES
         spec = {"native_languages": list(EU_LANGUAGES.values())}

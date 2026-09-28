@@ -7,7 +7,8 @@
   traces to an obligation) and trigger at least one anchored obligation;
 * every edge endpoint must be live (activity, product, block) and every
   obligation ref on an edge must be a live obligation;
-* every trigger ``when`` may only name L4 schema attributes.
+* every activity quotes the duty words it was read from, and every trigger
+  ``when`` may only use the L4 applicability language.
 
 Anchors whose clauses are not in the corpus yet are reported (an L1
 completeness concern), not counted as orphans.
@@ -17,7 +18,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
-from app.clhear.derived_models import attribute_schema, implies, mitigates, operates
+from app.clhear.derived_models import implies, mitigates, operates
 from app.clhear.l5.map import (
     _anchor_index,
     _live_blocks,
@@ -28,7 +29,9 @@ from app.clhear.l5.map import (
     live_activities,
     resolve_anchor,
 )
-from app.clhear.l5.models import ACTION_TYPES, SIDES
+from app.clhear.l5.models import SIDES
+
+WHEN_KEYS = frozenset({"jurisdictions", "roles", "condition", "fact", "expect"})
 
 
 def check_junction(engine: Engine) -> dict:
@@ -40,7 +43,6 @@ def check_junction(engine: Engine) -> dict:
         imp = _live_edges(conn, implies)
         opr = _live_edges(conn, operates)
         mit = _live_edges(conn, mitigates)
-        schema_keys = {r.key for r in conn.execute(sa.select(attribute_schema.c.key))}
     by_id = {a["id"]: a for a in acts}
     index = _anchor_index(obs)
     live_refs = {_ref(o) for o in obs} | {o["id"] for o in obs}
@@ -55,12 +57,12 @@ def check_junction(engine: Engine) -> dict:
     implied = {e["activity_id"] for e in imp if e["product_id"] in products}
     operating = {e["activity_id"] for e in opr if e["block_id"] in blocks}
     for a in acts:
-        if a["side"] not in SIDES or a["action_type"] not in ACTION_TYPES.get(a["side"], {}):
-            bad_vocab.append({"activity": a["id"], "side": a["side"], "action_type": a["action_type"]})
+        if a["side"] not in SIDES or (a.get("status") == "derived" and not (a.get("evidence") or {}).get("name")):
+            bad_vocab.append({"activity": a["id"], "side": a["side"], "reason": "not quoted from a duty"})
         resolved = 0
         for t in a["triggers"]:
             when = t.get("when") or {}
-            unknown = sorted(k for k in when if k not in schema_keys)
+            unknown = sorted(k for k in when if k not in WHEN_KEYS)
             if unknown:
                 bad_when.append({"activity": a["id"], "unknown_attributes": unknown})
             hits = resolve_anchor(t.get("anchor") or {}, index)

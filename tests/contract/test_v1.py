@@ -41,6 +41,7 @@ def test_openapi_paths_match_the_contract():
         "/v1/blueprints/{blueprint_id}/diff",
         "/v1/contributions/validate",
         "/v1/health",
+        "/v1/profile-schema",
         "/v1/profiles/{profile_id}",
         "/v1/releases/{release_id}",
         "/v1/releases/{release_id}/blueprints/{profile_id}",
@@ -64,9 +65,9 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
     version = client.get("/v1/version")
     assert version.status_code == 200
     body = version.json()
-    assert body["engine_version"] == "0.1.0"
+    assert body["engine_version"] == "0.2.0"
     assert body["api_version"] == "v1"
-    assert body["schema_revision"] == "0040"
+    assert body["schema_revision"] == "0042"
     assert body["image_digest"] == "sha256:abc"
     assert client.get("/v1/health").json()["status"] == "ok"
     adapters = client.get("/v1/adapters").json()["adapters"]
@@ -95,7 +96,8 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
     fetched = client.post("/v1/sources/example-source/test-fetch")
     assert fetched.status_code == 200
     assert fetched.json()["stored"] is False
-    assert fetched.json()["nodes"] == 1
+    assert fetched.json()["clauses"] == 1
+    assert fetched.json()["preview"][0]["text"].startswith("An organisation must keep a record")
 
     spare = client.post("/v1/sources", json={"key": "spare-source", "adapter": "local_text", "locator": {"text": "spare"}, "kind": "guidance"})
     assert spare.status_code == 201
@@ -108,7 +110,7 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
 
     profile = client.put("/v1/profiles/example-profile", json={
         "name": "Example profile",
-        "attributes": {"jurisdictions": [], "channels": []},
+        "attributes": {"jurisdictions": [], "roles": []},
     })
     assert profile.status_code == 200
     assert client.get("/v1/profiles/example-profile").json()["profile_id"] == "example-profile"

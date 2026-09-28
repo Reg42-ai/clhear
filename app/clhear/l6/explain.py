@@ -60,17 +60,18 @@ def allowed_ids(blueprint: dict) -> set[str]:
 
 
 def _facts(conditions: list[dict], attributes: dict) -> list[str]:
-    """The profile facts named by the L4 predicates that made obligations apply."""
+    """The profile answers that made the obligations apply, in the texts' own words."""
     out: list[str] = []
     for cond in conditions:
-        for key, want in (cond or {}).items():
-            have = attributes.get(key)
-            if have in (None, "", [], {}):
-                continue
-            shown = ", ".join(map(str, have)) if isinstance(have, list) else str(have)
-            fact = f"{key} = {shown}"
-            if fact not in out:
-                out.append(fact)
+        cond = cond or {}
+        found = []
+        if "jurisdictions" in cond:
+            found.append(f"operates in {cond['jurisdictions']}")
+        if "roles" in cond:
+            found.append("is " + " or ".join(f"'{r}'" for r in cond["roles"]))
+        if "condition" in cond:
+            found.append(f"'{cond.get('fact')}' is {'true' if cond.get('expect', True) else 'false'}")
+        out.extend(f for f in found if f not in out)
     return out
 
 
@@ -94,7 +95,7 @@ def explain_item(item: dict, by_oid: dict[str, dict], attributes: dict, blocks_b
     activities = [a for a in item.get("triggered_by", []) if not a.startswith("L4:")]
     via = []
     if facts:
-        via.append("profile facts " + "; ".join(facts[:4]))
+        via.append("the profile's answers: it " + "; ".join(facts[:4]))
     if activities:
         names = [f"{activities_by_id.get(a, {}).get('name', a)} ({a})" for a in activities[:4]]
         via.append("activities " + ", ".join(names))
@@ -104,6 +105,10 @@ def explain_item(item: dict, by_oid: dict[str, dict], attributes: dict, blocks_b
         sentences.append("These obligations apply to this profile through " + " and ".join(via) + ".")
     elif satisfied:
         sentences.append("These obligations apply to this profile through the activities that anchor them.")
+    quoted = [by_oid[oid] for oid in satisfied if (by_oid[oid].get("evidence") or {}).get("quote")]
+    if quoted:
+        first = quoted[0]
+        sentences.append(f"The text ({first['source_key']} {first['clause_ref']}): \"{first['evidence']['quote'][:300]}\"")
     backed = [c for c in item.get("characteristics", []) if c["status"] == "backed" and c.get("in_profile")]
     if backed:
         shown = "; ".join(f"{c['key']} = {c['value']} (from {c['backing_obligation_id']})" for c in backed[:4])

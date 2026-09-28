@@ -36,12 +36,11 @@ ADAPTER_KEYS = (
 )
 
 # HLD v2 §4.1 publisher adapters (parameterised; instantiated through
-# `fleet.adapter_for` / `starter_corpus`). Listed here so tooling can enumerate
+# `fleet.adapter_for`). Listed here so tooling can enumerate
 # every adapter class the fleet ships.
 PUBLISHER_ADAPTER_CLASSES = {
     "fca_handbook": "app.clhear.l1.adapters.fca_handbook:FcaHandbookAdapter",
     "sec_edgar": "app.clhear.l1.adapters.sec_edgar:SecEdgarAdapter",
-    "finra": "app.clhear.l1.adapters.sec_edgar:SecEdgarAdapter",
     "esma": "app.clhear.l1.adapters.standards_bodies:EsmaAdapter",
     "fatf": "app.clhear.l1.adapters.standards_bodies:FatfAdapter",
     "bis_basel": "app.clhear.l1.adapters.standards_bodies:BisBaselAdapter",
@@ -53,7 +52,6 @@ PUBLISHER_ADAPTER_CLASSES = {
     # HLD v2 §4.7 enforcement sources (read by L7; informative family members)
     "fca_enforcement": "app.clhear.l1.adapters.enforcement:FcaFinalNoticesAdapter",
     "sec_enforcement": "app.clhear.l1.adapters.enforcement:SecEnforcementAdapter",
-    "finra_enforcement": "app.clhear.l1.adapters.enforcement:FinraDisciplinaryAdapter",
 }
 
 
@@ -62,6 +60,22 @@ def publisher_adapter_class(key: str):
 
     module_name, class_name = PUBLISHER_ADAPTER_CLASSES[key].split(":")
     return getattr(importlib.import_module(module_name), class_name)
+
+# What a host can register as a source: adapter key, what it reads, and the
+# locator fields it needs. ``GET /v1/adapters`` serves this list.
+SOURCE_ADAPTERS = (
+    {"key": "local_text", "reads": "Pasted text, or a text, HTML or PDF file under CLHEAR_LOCAL_SOURCES_DIR",
+     "locator": {"text": "the text itself", "path": "a file path (relative to CLHEAR_LOCAL_SOURCES_DIR)",
+                 "format": "optional: text (default) or html, for pasted text"}},
+    {"key": "url", "reads": "A public https page or PDF, fetched live",
+     "locator": {"url": "https://..."}},
+    {"key": "eur_lex", "reads": "An EU act from EUR-Lex / Cellar (XHTML)",
+     "locator": {"celex": "CELEX number, e.g. 32016R0679", "celex_version": "optional consolidated id"}},
+    {"key": "uk_legislation", "reads": "A UK act or SI from legislation.gov.uk (CLML XML)",
+     "locator": {"doc": "e.g. uksi/2017/692"}},
+    {"key": "govinfo_us", "reads": "US Code sections or eCFR sections (GovInfo / eCFR)",
+     "locator": {"usc_title": "e.g. 15", "usc_sections": ["45"], "ecfr_title": "e.g. 16", "ecfr_sections": ["314.4"]}},
+)
 
 # Adapters whose source has an official citator/relations feed (HLD §7.2).
 CITATOR_KEYS = ("uk_legislation", "eur_lex")

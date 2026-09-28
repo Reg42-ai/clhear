@@ -5,8 +5,7 @@
 Tables (all bi-temporal, shared columns attached — I2, I3):
 
 * ``enforcement_events`` (``ENF-``) — one public enforcement outcome read from an
-  L1 enforcement source (FCA final notices, SEC actions, FINRA disciplinary
-  actions): regulator, date, respondent, amount, kind, the provisions the notice
+  L1 enforcement source (FCA final notices, SEC enforcement actions): regulator, date, respondent, amount, kind, the provisions the notice
   cites verbatim, and the L1 clause it was read from.
 * ``enforcement_links`` — event → obligation edges (the linker's output) with the
   citation that justified each link, the method and a confidence.

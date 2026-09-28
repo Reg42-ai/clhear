@@ -2,15 +2,14 @@
 # This file is part of CLHEAR. See LICENSE (AGPL-3.0-only).
 """L3 decomposers — obligation -> building block(s) (HLD v2 §4.3).
 
-Deterministic-first: the duty sentence of an obligation names what the
-organisation must *have* (a policy, an officer, a monitoring system, a
-capital level…). :func:`propose_block` infers the kind and a harmonised name;
+Deterministic-first, and only from the duty's own words: the measure is what
+the duty tells the addressee to do or to have, quoted from the clause ("keep a
+log of security incidents", "an inventory of the systems ..."). Its kind is
+read from the same words (:func:`app.clhear.l3.kinds.kind_from_words`); a duty
+that names nothing concrete gets no measure and an evidence gap instead.
 :func:`find_or_create_block` reuses an existing canonical block of that kind
-when the name matches (one AML policy document, cited by hundreds of
-obligations), otherwise mints ``BLK-000001``. Every obligation -> block link is
-a ``requires`` edge carrying the rationale span and a why-trail (I3). Curated
-blocks keep their ``satisfies`` selectors; those anchors become explicit
-``requires`` edges too, so the completeness gate has one source of truth.
+when the name matches, otherwise mints ``BLK-000001``. Every obligation ->
+block link is a ``requires`` edge carrying the quoted duty and a why-trail.
 
 Change propagation: ``clhear.l2.changed`` (revoked -> edges invalidated;
 updated -> edge re-stamped, characteristics backed by the obligation reopened).
@@ -25,8 +24,9 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Connection, Engine
 
 from app.clhear.derived_models import blocks, characteristics, obligations, requires
-from app.clhear.l2.registry import duty_span
-from app.clhear.l3.kinds import KINDS, infer_kind
+from app.clhear import evidence
+from app.clhear.l2.registry import duty_span, field_quotes, obligation_clauses
+from app.clhear.l3.kinds import KINDS, kind_from_words
 from app.clhear.platform import record
 from app.clhear.platform.ids import next_id
 
@@ -36,32 +36,47 @@ AGENT = "l3.decompose"
 LIVE = ("derived", "validated")
 NAME_MATCH = 0.75  # content-word Jaccard for reusing an existing block of the same kind
 
+# Function words only: "not" and "no" are kept, so a prohibition never matches the act it forbids.
 _STOP = frozenset({"the", "a", "an", "of", "to", "and", "or", "in", "on", "for", "by", "with", "that", "which",
-                   "its", "their", "such", "any", "all", "as", "at", "be", "is", "are", "must", "shall", "firm",
-                   "firms", "person", "institution", "entity", "it", "this", "these", "those", "not", "no"})
+                   "its", "their", "such", "any", "all", "as", "at", "be", "is", "are", "must", "shall", "it",
+                   "this", "these", "those"})
 _WORD = re.compile(r"[a-z0-9]+")
 
-# kind -> regex capturing the thing to be had; group "obj" becomes the block name stem.
-_NAME_CUES: dict[str, tuple[re.Pattern, str]] = {
-    "Role": (re.compile(r"\b(?:appoint|designate|nominate|have|maintain|employ)\s+(?:an?|the|its)?\s*(?P<obj>[\w\- ]{3,60}?(?:officer|MLRO|function|manager|director|person|individual|head of [\w ]{3,30}))\b", re.I), "role"),
-    "Body": (re.compile(r"\b(?P<obj>(?:[\w\-]+ ){0,3}(?:committee|board(?: of directors)?|management body|forum))\b", re.I), "body"),
-    "Document": (re.compile(r"\b(?P<obj>(?:[\w\-]+ ){0,4}(?:polic(?:y|ies)|procedures?|register|charter|plan|manual|statement|agreement|contract|prospectus|terms of business))\b", re.I), "document"),
-    "System": (re.compile(r"\b(?P<obj>(?:[\w\-]+ ){0,3}(?:monitoring system|screening system|systems? and controls|systems?|monitoring|surveillance|screening|software|database))\b", re.I), "system"),
-    "Asset": (re.compile(r"\b(?P<obj>own funds|capital(?: resources)?|client money|client assets|(?:professional indemnity )?insurance|liquidity(?: buffer)?|reserves?|collateral)\b", re.I), "asset"),
-    "Configuration": (re.compile(r"\b(?P<obj>(?:[\w\-]+ ){0,3}(?:threshold|limit|parameter|maximum|minimum))\b", re.I), "configuration"),
-    "Workflow": (re.compile(r"\b(?P<obj>(?:[\w\-]+ ){0,3}(?:escalation|approval|sign-off|workflow))\b", re.I), "workflow"),
-    "Process": (re.compile(r"\b(?P<obj>(?:review|assess|report|notify|submit|file|verify|identify|record|retain|train|test|reconcile|disclose|inform|monitor|conduct|carry out|perform)\w*(?: [\w\-]+){0,6})", re.I), "process"),
-}
+# Where a measure's name stops: the thing to do or have has been named; what
+# follows is its condition, timing or purpose. Plain English grammar.
+_CUT = re.compile(
+    r"\s*[;:].*$|,?\s+(?:where|when|whenever|if|unless|within|no later than|before|after|upon|at least|"
+    r"without (?:undue )?delay|in accordance with|taking into account|so that|in order to|so as to|to ensure|"
+    r"to enable|to allow|to prevent|as soon as|provided that|subject to)\b.*$",
+    re.I | re.S)
+# "appoint a person ... and record the appointment": a second verb phrase starts the next measure.
+_SECOND_ACTION = re.compile(r"\s+and\s+(?:(?:shall|must|should|will)\b.*$|(?=\w+\s+(?:the|a|an|its|their|all|any|each|every)\b).*$)",
+                            re.I | re.S)
+_DETERMINER = re.compile(r"^(?:(?:a|an|the|its|their|his|her|all|any|each|every|such|that|those|these)\s+)+", re.I)
+MAX_NAME_WORDS = 12
 
-# Leading verbs / qualifiers that describe the duty, not the deliverable.
-_LEAD = re.compile(
-    r"^(?:(?:establish|maintain|implement|adopt|operate|hold|keep|have|put in place|prepare|produce|draw up|"
-    r"appoint|designate|nominate|ensure|develop|document|apply|use|and|or|written|documented|formal|adequate|"
-    r"appropriate|effective|robust|sufficient|suitable|an?|the|its|their) )+",
-    re.I,
-)
-# Where a process name stops: the object has been named, the rest is condition.
-_PROCESS_CUT = re.compile(r"\s+(?:for|within|at|by|in accordance|under|to the|no later|before|after|where|when|if|on|,|;).*$", re.I)
+
+# "establish and maintain", "establish, implement and maintain": one action with several verbs.
+_VERB_GROUP = re.compile(r"^(\w+(?:,\s*\w+)*,?\s+(?:and|or|and/or)\s+\w+)(?:\s+(.*))?$", re.I | re.S)
+
+
+def split_verb(phrase: str) -> tuple[str, str]:
+    """(verb or coordinated verb group, the rest)."""
+    group = _VERB_GROUP.match(phrase)
+    if group:
+        return group.group(1), group.group(2) or ""
+    verb, _, rest = phrase.partition(" ")
+    return verb, rest
+
+
+def measure_phrase(action: str) -> str:
+    """The action up to where its condition, timing or purpose begins."""
+    phrase = _CUT.sub("", " ".join((action or "").split()))
+    verb, rest = split_verb(phrase)
+    second = _SECOND_ACTION.search(f" {rest}") if rest else None
+    if second:  # a second action with its own verb and object starts the next measure
+        phrase = f"{verb} {f' {rest}'[:second.start()].strip()}".strip()
+    return " ".join(phrase.strip(" ,;:.").split()[:MAX_NAME_WORDS])
 
 
 def _content(text: str) -> set[str]:
@@ -73,39 +88,80 @@ def name_similarity(a: str, b: str) -> float:
     return len(ca & cb) / len(ca | cb) if (ca | cb) else 0.0
 
 
-def _clean(stem: str, *, strip_lead: bool = True) -> str:
-    stem = re.sub(r"\s+", " ", stem or "").strip(" ,;:.")
-    if strip_lead:
-        stem = _LEAD.sub("", stem)
-    return stem[:80]
+def propose_block(obligation: dict, clauses: list[dict]) -> dict | None:
+    """The measure a duty names, in its own words, or None when it names none.
 
-
-def propose_block(obligation: dict) -> dict:
-    """Kind, harmonised name and purpose of the block this obligation most
-    directly requires. Names are noun phrases from the text itself, with the
-    duty verb stripped, so the same deliverable in two instruments harmonises
-    onto one block."""
-    text = obligation.get("determination") or obligation.get("statement") or ""
-    kind = infer_kind(text)
-    pattern, suffix = _NAME_CUES[kind]
-    matches = list(pattern.finditer(text))
-    # Prefer the most specific noun phrase ("audit committee" over "board") when several are named.
-    m = max(matches, key=lambda x: len(x.group("obj").split()), default=None) if kind in ("Body", "Role") else (matches[0] if matches else None)
-    if kind == "Process":
-        stem = _clean(_PROCESS_CUT.sub("", m.group("obj")) if m else (obligation.get("action") or ""), strip_lead=False)
+    Active duties name an action ("review user access rights") or a thing to
+    have ("an inventory of the systems ..."); a passive duty ("personal data
+    shall be kept ...") names its subject and what must be true of it. Every
+    part of the name is quoted from ``clauses``; the kind is read from the same
+    words, or ``Unspecified``."""
+    action = obligation.get("action") or ""
+    subject = obligation.get("subject") or ""
+    passive = action.lower().startswith(("be ", "been "))
+    phrase = measure_phrase(action.split(" ", 1)[1] if passive and " " in action else action)
+    if not phrase:
+        return None
+    if (obligation.get("modality") in ("must-not", "prohibited")
+            or (obligation.get("obligation_type") or "").startswith("not ")):
+        return _prohibition(obligation, phrase, subject, passive, clauses)
+    if passive:
+        if not subject:
+            return None
+        parts, kind, kind_word = [subject, phrase], *kind_from_words("", subject)
+        name = f"{subject[0].upper()}{subject[1:]}: {phrase}"
     else:
-        stem = _clean(m.group("obj")) if m else _clean(obligation.get("action") or obligation.get("title") or "")
-    if not stem:
-        stem = _clean(obligation.get("title") or "requirement") or "Requirement"
-    name = stem[0].upper() + stem[1:]
-    if kind == "Process" and len(name.split()) < 3 and not re.search(r"(process|procedure|programme|review|assessment)$", name, re.I):
-        name = f"{name} process"
-    elif kind == "Role" and not re.search(r"(officer|function|manager|director|role|head|person|individual)", name, re.I):
-        name = f"{name} role"
-    elif kind == "System" and not re.search(r"(system|software|database|controls)$", name, re.I):
-        name = f"{name} system"
-    purpose = duty_sentence(text) or text[:240]
-    return {"kind": kind, "name": name[:160], "purpose": purpose[:400], "suffix": suffix}
+        verb, rest = split_verb(phrase)
+        obj = _DETERMINER.sub("", rest).strip()
+        kind, kind_word = kind_from_words(verb, obj)
+        if kind == "Unspecified":
+            kind, kind_word = "Process", verb  # the duty says to do something: an activity to carry out
+        named = phrase if kind == "Process" or not obj else obj
+        parts, name = [named], named[0].upper() + named[1:]
+    quotes = []
+    for part in parts:
+        found = field_quotes(part, clauses)
+        if not found:
+            return None
+        quotes.extend(found)
+    kind_quote = field_quotes(kind_word, clauses) if kind_word else []
+    duty = (obligation.get("evidence") or {}).get("duty") if isinstance(obligation.get("evidence"), dict) else None
+    return {"kind": kind, "name": name[:160], "purpose": (duty or {}).get("quote") or phrase,
+            "evidence": {"name": quotes, "kind": kind_quote or []}}
+
+
+_NEGATIVE = re.compile(r"\b(?:must not|shall not|may not|should not|is not permitted to|are not permitted to|"
+                       r"is prohibited from|are prohibited from|no \w+(?: \w+)? (?:may|shall|must))\b", re.I)
+
+
+def _prohibition(obligation: dict, phrase: str, subject: str, passive: bool, clauses: list[dict]) -> dict | None:
+    """A prohibition's measure keeps its negation, in the clause's words: "must not disclose ..."
+    or "Personal data: shall not be transferred ...". None when the words cannot be quoted."""
+    duty = (obligation.get("evidence") or {}).get("duty") if isinstance(obligation.get("evidence"), dict) else None
+    for clause in clauses:
+        found = _NEGATIVE.search(clause["text"])
+        if found is None:
+            continue
+        tail = clause["text"][found.end():]
+        words = phrase.split()
+        at = evidence.locate(tail, " ".join(words[:2]) if len(words) > 1 else phrase)
+        if at is None:
+            continue
+        stop = evidence.locate(tail, phrase)
+        span_end = found.end() + (stop[1] if stop else at[1])
+        quoted = {**evidence.whole(clause), "start": found.start(), "end": span_end,
+                  "quote": clause["text"][found.start():span_end]}
+        name = " ".join(quoted["quote"].split())
+        if passive and subject:
+            subject_quotes = field_quotes(subject, clauses)
+            if not subject_quotes:
+                return None
+            return {"kind": "Unspecified", "name": f"{subject[0].upper()}{subject[1:]}: {name}"[:160],
+                    "purpose": (duty or {}).get("quote") or name,
+                    "evidence": {"name": subject_quotes + [quoted], "kind": []}}
+        return {"kind": "Process", "name": (name[0].upper() + name[1:])[:160], "purpose": (duty or {}).get("quote") or name,
+                "evidence": {"name": [quoted], "kind": [quoted]}}
+    return None
 
 
 def duty_sentence(text: str) -> str:
@@ -130,14 +186,14 @@ def why_for(subject_ref: str, *, method: str, confidence: float | None, summary:
 
 
 def _canonical_blocks(conn: Connection, kind: str | None = None) -> list[dict]:
-    q = sa.select(blocks).where(blocks.c.canonical_id.is_(None))
+    q = sa.select(blocks).where(blocks.c.canonical_id.is_(None)).where(blocks.c.valid_to.is_(None))
     if kind:
         q = q.where(blocks.c.kind == kind)
     return [dict(r) for r in conn.execute(q).mappings()]
 
 
 def find_or_create_block(conn: Connection, *, kind: str, name: str, purpose: str, why: record.WhyTrail | str,
-                         method: str = "deterministic") -> tuple[str, bool]:
+                         method: str = "deterministic", evidence: dict | None = None) -> tuple[str, bool]:
     """Reuse the best-matching canonical block of this kind, else create one.
     Returns (block_id, created)."""
     if kind not in KINDS:
@@ -164,6 +220,7 @@ def find_or_create_block(conn: Connection, *, kind: str, name: str, purpose: str
             "status": "derived",
             "kind": kind,
             "purpose": purpose,
+            "evidence": evidence or {},
         },
         why=why,
         valid_from=datetime.now(timezone.utc).date(),
@@ -180,12 +237,13 @@ def live_edge(conn: Connection, obligation_id: str, block_id: str | None = None)
 
 def link(conn: Connection, *, obligation: dict, block_id: str, method: str, why: record.WhyTrail | str,
          rationale: str | None = None) -> str | None:
-    """Open the requires edge obligation -> block (idempotent per pair)."""
+    """Open the requires edge obligation -> block (idempotent per pair). Its
+    rationale is the duty as quoted from the clause."""
     existing = live_edge(conn, obligation["id"], block_id)
     if existing is not None:
         return None
-    text = obligation.get("determination") or obligation.get("statement") or ""
-    span = duty_span(text)
+    found = obligation.get("evidence") if isinstance(obligation.get("evidence"), dict) else {}
+    duty = found.get("duty")
     rid = next_id(conn, "REQ")
     record.write(
         conn,
@@ -194,11 +252,12 @@ def link(conn: Connection, *, obligation: dict, block_id: str, method: str, why:
             "id": rid,
             "obligation_id": obligation["id"],
             "block_id": block_id,
-            "rationale": rationale if rationale is not None else (text[span[0]:span[1]] if span else text[:300]),
-            "rationale_start": span[0] if span and rationale is None else None,
-            "rationale_end": span[1] if span and rationale is None else None,
+            "rationale": rationale if rationale is not None else ((duty or {}).get("quote") or ""),
+            "rationale_start": (duty or {}).get("start") if rationale is None else None,
+            "rationale_end": (duty or {}).get("end") if rationale is None else None,
             "method": method,
             "obligation_text_hash": obligation.get("text_hash") or "",
+            "evidence": {"duty": [duty] if duty else []},
         },
         why=why,
         valid_from=datetime.now(timezone.utc).date(),
@@ -206,7 +265,7 @@ def link(conn: Connection, *, obligation: dict, block_id: str, method: str, why:
     return rid
 
 
-def _selector_covers(selector: dict, ob: dict) -> bool:
+def _selector_covers(selector: dict, ob: dict) -> bool:  # legacy selectors on pre-0.2 blocks
     if not isinstance(selector, dict) or selector.get("source_key") != ob["source_key"]:
         return False
     refs = selector.get("refs")
@@ -228,10 +287,13 @@ def _live_obligations(conn: Connection, source_key: str | None = None) -> list[d
 
 
 def decompose(engine: Engine, *, source_key: str | None = None, limit: int | None = None) -> dict:
-    """Give every live obligation without a live requires edge at least one
-    block. Curated anchors first (human-authored mapping wins), then the
-    deterministic proposal."""
-    linked_curated = linked_derived = created = examined = 0
+    """Give every live obligation without a live requires edge the measure its
+    own words name. A duty that names nothing concrete stays without one, and
+    an evidence gap says which source would name it."""
+    from app.clhear.l1.scopes import active_name
+
+    scope = active_name() or ""
+    linked_derived = created = examined = gaps = 0
     with engine.begin() as conn:
         todo = [ob for ob in _live_obligations(conn, source_key) if live_edge(conn, ob["id"]) is None]
         if limit:
@@ -239,25 +301,24 @@ def decompose(engine: Engine, *, source_key: str | None = None, limit: int | Non
         for ob in todo:
             examined += 1
             ref = ob["stable_id"] or ob["id"]
-            anchors = curated_anchor_blocks(conn, ob)
-            if anchors:
-                for b in anchors:
-                    why = why_for(ref, method="curated-anchor", confidence=1.0,
-                                  summary=f"curated block {b['id']} anchors {ob['source_key']} #{ob['clause_ref']} via satisfies selector",
-                                  evidence_refs=[ob["id"]])
-                    if link(conn, obligation=ob, block_id=b["id"], method="curated-anchor", why=why):
-                        linked_curated += 1
+            proposal = propose_block(ob, obligation_clauses(conn, ob))
+            if proposal is None:
+                evidence.record_gap(conn, scope=scope, layer="L3", kind="no_measure", subject=ob["id"],
+                                    source_key=ob["source_key"], clause_ref=ob["clause_ref"],
+                                    missing="a measure named by the text")
+                gaps += 1
                 continue
-            proposal = propose_block(ob)
-            trail = why_for(ref, method="deterministic", confidence=0.8 if proposal["kind"] != "Process" else 0.7,
-                            summary=f"{proposal['kind']} cue in duty sentence -> block '{proposal['name']}'",
-                            evidence_refs=[ob["id"]]).write(conn)
+            quotes = proposal["evidence"]["name"] + proposal["evidence"]["kind"]
+            trail = why_for(ref, method="deterministic", confidence=0.8,
+                            summary=f"measure named by the duty's own words: '{proposal['name']}' ({proposal['kind']})",
+                            evidence_refs=[ob["id"], *quotes]).write(conn)
             bid, was_created = find_or_create_block(conn, kind=proposal["kind"], name=proposal["name"],
-                                                    purpose=proposal["purpose"], why=trail)
+                                                    purpose=proposal["purpose"], why=trail,
+                                                    evidence=proposal["evidence"])
             created += int(was_created)
             if link(conn, obligation=ob, block_id=bid, method="deterministic", why=trail):
                 linked_derived += 1
-    out = {"examined": examined, "linked_curated": linked_curated, "linked_derived": linked_derived, "blocks_created": created}
+    out = {"examined": examined, "linked_derived": linked_derived, "blocks_created": created, "gaps": gaps}
     log.info("L3 decompose: %s", out)
     return out
 
@@ -287,11 +348,6 @@ def backfill_kinds_and_requires(conn: Connection) -> dict:
     obs = _live_obligations(conn)
     for b in conn.execute(sa.select(blocks)).mappings().all():
         b = dict(b)
-        if b["id"].startswith("BLK-AI-") and b["kind"] == "Process":
-            inferred = infer_kind(f"{b['name']} {b['description']} {b['capability']}")
-            if inferred != b["kind"]:
-                conn.execute(blocks.update().where(blocks.c.id == b["id"]).values(kind=inferred))
-                kinds_set += 1
         if not b["purpose"] and b["description"]:
             conn.execute(blocks.update().where(blocks.c.id == b["id"]).values(purpose=b["description"][:400]))
         for ob in obs:

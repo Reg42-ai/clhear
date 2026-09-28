@@ -38,7 +38,23 @@ def cmd_version(_args) -> int:
     return 0
 
 
-def cmd_doctor(_args) -> int:
+def _check_model() -> dict:
+    """One small real call through the configured provider."""
+    from app.clhear.platform.router import build_providers
+
+    providers = build_providers()
+    if not providers or set(providers) == {"fake"}:
+        return {"model_check": "skipped", "reason": "no live provider configured"}
+    provider = next(iter(providers.values()))
+    try:
+        result = provider.complete(model="", prompt='Reply with exactly this JSON: {"ok": true}', system=None, max_tokens=64)
+    except Exception as exc:  # noqa: BLE001 - the message is the diagnosis
+        return {"model_check": "failed", "error": str(exc)[:300]}
+    return {"model_check": "ok", "model": result.model, "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens}
+
+
+def cmd_doctor(args) -> int:
     from sqlalchemy.exc import SQLAlchemyError
 
     status = describe()
@@ -55,7 +71,11 @@ def cmd_doctor(_args) -> int:
         "provider": status["provider"] or "unconfigured",
         "live_run": "ready" if status["live"] else "blocked",
     }
+    if getattr(args, "check_model", False):
+        payload.update(_check_model())
     _print(payload)
+    if payload.get("model_check") == "failed":
+        return 1
     if database != "ok":
         return 1
     if status["provider"] in {"anthropic", "openai_compatible", "bedrock"} and not status["configured"]:
@@ -240,7 +260,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("init", help="create an empty directory for scope files").set_defaults(func=cmd_init)
-    sub.add_parser("doctor", help="check the database and whether a live model is configured").set_defaults(func=cmd_doctor)
+    doctor = sub.add_parser("doctor", help="check the database and whether a live model is configured")
+    doctor.add_argument("--check-model", action="store_true", help="also make one small real call to the model")
+    doctor.set_defaults(func=cmd_doctor)
     sub.add_parser("migrate", help="apply database migrations").set_defaults(func=cmd_migrate)
     sub.add_parser("version", help="print the engine tag").set_defaults(func=cmd_version)
     sub.add_parser("quickstart", help="write a sample blueprint on this machine").set_defaults(func=cmd_quickstart)

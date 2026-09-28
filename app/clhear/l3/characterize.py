@@ -3,13 +3,12 @@
 """L3 characterizers — fill each block's fixed characteristic schema from the
 text of the obligations that require it (HLD v2 §4.3).
 
-Every required key of the block's kind gets exactly one live row:
-``backed`` (value is a substring of a backing obligation's text; the backing
-span is kept), ``not_specified`` (the source says nothing — recorded
-explicitly, never left blank) or ``unbacked`` (LLM proposal that failed the
-grounding check; never counted as filled). Deterministic extractors run first;
-the ``l3.characterize`` task is consulted only for keys they leave open and
-its answers must be >= 80 % grounded in the backing text.
+A characteristic is written only when the clauses of a duty the block
+satisfies state it: its value is quoted from the clause, with offsets. A key
+the texts do not state is not filled in; it becomes an evidence gap naming the
+guidance that would specify it. Deterministic extractors run first; the
+``l3.characterize`` task is consulted only for keys they leave open, and its
+answers are kept only when they are verbatim words of a clause.
 """
 from __future__ import annotations
 
@@ -20,7 +19,9 @@ from datetime import datetime, timezone
 import sqlalchemy as sa
 from sqlalchemy.engine import Connection, Engine
 
+from app.clhear import evidence as ev
 from app.clhear.derived_models import blocks, characteristics, obligations, requires
+from app.clhear.l2.registry import obligation_clauses
 from app.clhear.l3.kinds import KIND_SCHEMAS, NOT_SPECIFIED, required_fields
 from app.clhear.platform import record
 from app.clhear.platform.gateway import parse_json_object
@@ -71,23 +72,38 @@ def _first(pattern: re.Pattern, text: str, group: int = 0) -> str:
     return re.sub(r"\s+", " ", (value or "").strip(" ,;:."))
 
 
+def _named(value: str) -> str:
+    """A noun phrase that names something: the words after its last preposition,
+    and more than a bare generic noun ("systems")."""
+    value = re.split(r"\s(?:to|of|for|in|on|with|by|from)\s", f" {value} ")[-1].strip()
+    return value if len(value.split()) > 1 else ""
+
+
 def extract_value(kind: str, key: str, ob: dict) -> str:
     """Deterministic value for one characteristic from one obligation."""
     text = ob.get("determination") or ob.get("statement") or ""
     full = " ".join(t for t in (ob.get("statement"), ob.get("determination")) if t)
     subject, action, condition, obj = (ob.get("subject") or "", ob.get("action") or "", ob.get("condition") or "", ob.get("object") or "")
-    if key in ("cadence", "review_cadence"):
+    if key == "review_cadence":
+        # A deadline ("without undue delay") times an action, not how often a document is reviewed.
+        value = _first(_CADENCE, full)
+        return "" if re.match(r"(?:without|immediately|promptly|within)\b", value, re.I) else value
+    if key == "cadence":
         return _first(_CADENCE, full)
     if key in ("performing_role", "owner"):
-        return subject if subject and subject.lower() in full.lower() else ""
+        from app.clhear.l2.registry import binds_subject, is_universal
+
+        # Only an addressee the duty binds can own or perform it, not the document a content duty describes.
+        return subject if (subject and binds_subject(ob) and not is_universal(subject)
+                           and subject.lower() in full.lower()) else ""
     if key == "approver":
         return _first(_APPROVER, full, 1)
     if key == "trigger":
         return condition if condition and condition.lower() in full.lower() else _first(_TRIGGER, full, 1)
     if key == "system_or_tool":
-        return _first(_SYSTEM, full, 1)
+        return _named(_first(_SYSTEM, full, 1))
     if key == "output":
-        return _first(_OUTPUT, full, 1) or (obj if obj and obj.lower() in full.lower() else "")
+        return _named(_first(_OUTPUT, full, 1))
     if key in ("record", "retention"):
         return _first(_RETENTION, full) or _first(_YEARS, full)
     if key == "mandatory_sections":
@@ -181,7 +197,7 @@ def _why(block_id: str, *, method: str, summary: str, confidence: float | None, 
 
 
 def _write(conn: Connection, block_id: str, key: str, *, value: str, status: str, backing_ob: str | None,
-           span: str, method: str, why) -> None:
+           span: str, method: str, why, quote: dict | None = None) -> None:
     record.write(
         conn,
         characteristics,
@@ -193,6 +209,7 @@ def _write(conn: Connection, block_id: str, key: str, *, value: str, status: str
             "backing_obligation_id": backing_ob,
             "backing_span": span,
             "method": method,
+            "evidence": {"value": [quote] if quote else []},
         },
         why=why,
         valid_from=datetime.now(timezone.utc).date(),
@@ -207,7 +224,7 @@ def _llm_fill(llm, block: dict, keys: list[str], backing: list[dict]) -> dict[st
     texts = "\n".join(f"- [{o['stable_id'] or o['id']}] {o['statement'] or o['determination']}" for o in backing[:12])
     prompt = (
         f"Building block: {block['name']} (kind {block['kind']}). Purpose: {block['purpose'] or block['description']}\n"
-        "From ONLY the obligation texts below, fill these characteristics. Quote or closely paraphrase the text; "
+        "From ONLY the obligation texts below, fill these characteristics. Copy the exact words of the text; "
         f"if the sources do not say, answer exactly \"{NOT_SPECIFIED}\".\n"
         + "\n".join(f"- {k}: {descriptions[k]}" for k in keys)
         + "\nJSON object with exactly these keys.\n\nObligations:\n" + texts
@@ -227,79 +244,88 @@ def _llm_fill(llm, block: dict, keys: list[str], backing: list[dict]) -> dict[st
     return out
 
 
-def characterize_block(engine: Engine, block: dict, llm=None) -> dict:
-    """Fill every missing required key of one block. Deterministic values are
-    written first; the model is consulted (outside any write transaction) only
-    for keys the regexes could not fill, and its answers are accepted solely
-    when grounded in the backing text. Returns per-status counts."""
-    counts = {"backed": 0, "not_specified": 0, "unbacked": 0}
+def _quoted(value: str, clauses: list[dict]) -> tuple[dict, str] | None:
+    """(quote, sentence around it) when ``value`` is the words of one of ``clauses``."""
+    found = ev.quote_first(clauses, value) if value else None
+    if found is None:
+        return None
+    clause = next(c for c in clauses if c["id"] == found["clause_id"])
+    return found, backing_span(found["quote"], clause["text"]) or found["quote"]
+
+
+def characterize_block(engine: Engine, block: dict, llm=None, *, scope: str = "") -> dict:
+    """Fill the keys of one block that its duties' clauses state, with quotes.
+    Deterministic values first; the model only for keys still open, and only
+    verbatim answers are kept. Keys no clause states become evidence gaps."""
+    counts = {"backed": 0, "gaps": 0}
+    fields = dict(KIND_SCHEMAS.get(block["kind"], {}).get("fields", ()))
     with engine.begin() as conn:
         backing = _backing(conn, block["id"])
-        texts = [" ".join(t for t in (o.get("statement"), o.get("determination")) if t) for o in backing]
+        read = {o["id"]: obligation_clauses(conn, o) for o in backing}
         live = _live_keys(conn, block["id"])
+        for key, row in list(live.items()):
+            if row["status"] != "backed" or not (row.get("evidence") or {}).get("value"):
+                record.invalidate(conn, characteristics, characteristics.c.id == row["id"],
+                                  why=_why(block["id"], method="grounded", summary="kept only quoted values",
+                                           confidence=None).write(conn), reason="value is not quoted from a clause")
+                live.pop(key)
         missing = [k for k in required_fields(block["kind"]) if k not in live]
-        if not missing:
+        if not missing or not backing:
             return counts
-        evidence = [o["id"] for o in backing]
-        why = _why(block["id"], method="deterministic", confidence=0.85 if backing else None,
-                   summary=f"characteristics of {block['kind']} block from {len(backing)} backing obligation(s)", evidence=evidence)
-        trail = why.write(conn)
+        trail = _why(block["id"], method="deterministic", confidence=0.85,
+                     summary=f"characteristics of {block['kind']} block quoted from {len(backing)} duty clause(s)",
+                     evidence=[o["id"] for o in backing]).write(conn)
         still_open: list[str] = []
         for key in missing:
-            found = False
             for ob in backing:
-                value = extract_value(block["kind"], key, ob)
-                text = " ".join(t for t in (ob.get("statement"), ob.get("determination")) if t)
-                span = backing_span(value, text)
-                if value and span:
-                    _write(conn, block["id"], key, value=value[:300], status="backed", backing_ob=ob["id"], span=span[:500],
-                           method="deterministic", why=trail)
+                found = _quoted(extract_value(block["kind"], key, ob), read[ob["id"]])
+                if found is not None:
+                    _write(conn, block["id"], key, value=found[0]["quote"][:300], status="backed", backing_ob=ob["id"],
+                           span=found[1][:500], method="deterministic", why=trail, quote=found[0])
                     counts["backed"] += 1
-                    found = True
                     break
-            if not found:
+            else:
                 still_open.append(key)
     answers: dict[str, str] = {}
-    if still_open and llm is not None and backing:
+    if still_open and llm is not None:
         answers = _llm_fill(llm, block, still_open, backing)
     with engine.begin() as conn:
-        if answers:
-            model = answers.pop("__model__", "")
-            llm_trail = _why(block["id"], method="l3.characterize", confidence=0.75,
-                             summary=f"l3.characterize proposals for {len(still_open)} open key(s), grounding >= {GROUNDING:.0%}",
-                             manifest={"model": model, "task": "l3.characterize"}, evidence=evidence).write(conn)
-            for key in list(still_open):
-                value = answers.get(key, "")
-                if not value:
+        model = answers.pop("__model__", "") if answers else ""
+        llm_trail = None
+        for key in list(still_open):
+            value = answers.get(key, "")
+            for ob in backing:
+                found = _quoted(value, read[ob["id"]]) if value and not value.lower().startswith(NOT_SPECIFIED) else None
+                if found is None:
                     continue
-                if value.lower().startswith(NOT_SPECIFIED):
-                    _write(conn, block["id"], key, value=NOT_SPECIFIED, status="not_specified", backing_ob=None, span="",
-                           method="l3.characterize", why=llm_trail)
-                    counts["not_specified"] += 1
-                    still_open.remove(key)
-                elif grounded(value, texts):
-                    ob = next((o for o, t in zip(backing, texts) if backing_span(value, t)), backing[0])
-                    span = backing_span(value, " ".join(t for t in (ob.get("statement"), ob.get("determination")) if t))
-                    _write(conn, block["id"], key, value=value[:300], status="backed", backing_ob=ob["id"], span=span[:500],
-                           method="l3.characterize", why=llm_trail)
-                    counts["backed"] += 1
-                    still_open.remove(key)
-                else:
-                    _write(conn, block["id"], key, value=value[:300], status="unbacked", backing_ob=None, span="",
-                           method="l3.characterize", why=llm_trail)
-                    counts["unbacked"] += 1
-                    still_open.remove(key)
+                if llm_trail is None:
+                    llm_trail = _why(block["id"], method="l3.characterize", confidence=0.75,
+                                     summary="l3.characterize values kept only where they are verbatim clause words",
+                                     manifest={"model": model, "task": "l3.characterize"},
+                                     evidence=[o["id"] for o in backing]).write(conn)
+                _write(conn, block["id"], key, value=found[0]["quote"][:300], status="backed", backing_ob=ob["id"],
+                       span=found[1][:500], method="l3.characterize", why=llm_trail, quote=found[0])
+                counts["backed"] += 1
+                still_open.remove(key)
+                break
+        first = backing[0]
         for key in still_open:
-            _write(conn, block["id"], key, value=NOT_SPECIFIED, status="not_specified", backing_ob=None, span="",
-                   method="deterministic", why=trail)
-            counts["not_specified"] += 1
+            ev.record_gap(conn, scope=scope, layer="L3", kind="characteristic_unspecified", subject=f"{block['id']}:{key}",
+                          source_key=first["source_key"], clause_ref=first["clause_ref"],
+                          missing=f"{key}: {fields.get(key, '')}", field=key.replace("_", " "),
+                          detail={"block_id": block["id"], "block": block["name"], "key": key,
+                                  "duties": [o["id"] for o in backing]})
+            counts["gaps"] += 1
     return counts
 
 
 def characterize(engine: Engine, llm=None, *, limit: int | None = None) -> dict:
     from app.clhear.l3.harmonize import blocks_in_scope
 
-    totals = {"blocks": 0, "backed": 0, "not_specified": 0, "unbacked": 0}
+    from app.clhear.l1.scopes import active_name
+
+    scope = active_name() or ""
+    totals = {"blocks": 0, "backed": 0, "gaps": 0}
     with engine.connect() as conn:
         rows = [dict(r) for r in conn.execute(sa.select(blocks).where(blocks.c.canonical_id.is_(None)).order_by(blocks.c.id)).mappings()]
         allowed = blocks_in_scope(conn)
@@ -308,10 +334,10 @@ def characterize(engine: Engine, llm=None, *, limit: int | None = None) -> dict:
     if limit:
         rows = rows[:limit]
     for b in rows:
-        counts = characterize_block(engine, b, llm)
+        counts = characterize_block(engine, b, llm, scope=scope)
         if any(counts.values()):
             totals["blocks"] += 1
-        for k in ("backed", "not_specified", "unbacked"):
+        for k in ("backed", "gaps"):
             totals[k] += counts[k]
     log.info("L3 characterize: %s", totals)
     return totals

@@ -2,13 +2,10 @@
 # This file is part of CLHEAR. See LICENSE (AGPL-3.0-only).
 """L4 ontology builders (HLD v2 §4.4).
 
-jurisdictions -> regulators -> licences / authorisations -> permitted products
-and services -> client types -> channels, plus the validity rules that make
-"no impossible permutation" checkable. Rows come from the reviewed register
-snapshot (``curated/l4_ontology.json``) cross-checked against the live
-registers when reachable; every write carries a why-trail whose evidence is
-the register check (I3). Rows that disappear from the snapshot are
-invalidated, never deleted (I2).
+The ontology holds only what the sources in scope establish: the
+jurisdictions their registrations declare, and the licence types quoted from
+their own licensing clauses (``license_types``). No reviewed register or
+industry vocabulary is seeded.
 
 Also home of the predicate language shared with L5 triggers and L6:
 :func:`matches` evaluates ``{attribute: requirement}`` against a profile's
@@ -35,7 +32,6 @@ from app.clhear.derived_models import (
     products_services,
     validity_rules,
 )
-from app.clhear.l4 import registers as l4_registers
 from app.clhear.platform import record
 from app.clhear.platform.events import publish_layer_event
 
@@ -104,7 +100,7 @@ def snapshot() -> dict:
     from app.clhear.l1.scopes import active
 
     if not active():
-        return l4_registers.ontology_snapshot()
+        return dict(EMPTY_SNAPSHOT)  # the host's sources define the ontology
     # Jurisdictions and their regulators are the ones the scope's own sources name.
     from app.clhear.l1.source_registry import S
 
@@ -185,14 +181,13 @@ def build_ontology_in(conn: Connection, *, check_registers: bool = True, publish
     with ``publish=False``: nothing downstream exists yet to re-validate."""
     snap = snapshot()
     version = snapshot_version(snap)
-    checks = l4_registers.check_registers(snap) if check_registers else {}
+    checks: dict = {}  # no external registers: the ontology comes from the texts in scope
     today = datetime.now(timezone.utc).date()
     counts = {c: {"added": 0, "updated": 0, "unchanged": 0, "invalidated": 0} for c in COLLECTIONS}
     live = {c: _live_rows(conn, _TABLES[c]) for c in COLLECTIONS}
-    evidence = [f"register:{k}:{v.freshness}" for k, v in checks.items()] or ["register-snapshot"]
-    trail = _why(f"l4.ontology@{version}", summary=f"L4 ontology built from register snapshot {version}; "
-                 + ", ".join(f"{k}={v.freshness}" for k, v in checks.items()),
-                 evidence=evidence, confidence=1.0).write(conn)
+    trail = _why(f"l4.ontology@{version}", summary=f"L4 ontology {version}: jurisdictions declared by the sources in "
+                 "scope and licence types quoted from their licensing clauses",
+                 evidence=["license_types"], confidence=1.0, method="sources-in-scope").write(conn)
 
     seen: dict[str, set] = {c: set() for c in COLLECTIONS}
     for l in snap["licences"]:

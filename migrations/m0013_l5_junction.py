@@ -81,27 +81,10 @@ def upgrade(conn: Connection) -> None:
         table.create(conn, checkfirst=True)
         ensure_shared_columns(conn, table)
 
-    from app.clhear import curated
-    from app.clhear.l1.scopes import active
-
-    # A scoped corpus derives its activities from its own obligations.
-    curated_rows = {} if active() else {c["id"]: c for c in curated.load("l5_activities")}
-    for item in curated_rows.values():
-        exists = conn.execute(sa.select(activities.c.id).where(activities.c.id == item["id"])).first()
-        values = dict(
-            name=item["name"], description=item.get("description", ""), business_owner=item.get("business_owner", ""),
-            triggers=item.get("triggers", []), status="curated", side=item["side"], action_type=item["action_type"],
-        )
-        if exists:
-            conn.execute(activities.update().where(activities.c.id == item["id"]).values(**values))
-        else:
-            conn.execute(activities.insert().values(id=item["id"], **values))
+    # Activities are derived from the texts in scope; none are seeded.
     for row in conn.execute(sa.select(activities.c.id, activities.c.name, activities.c.action_type)).all():
-        if row.id in curated_rows or row.action_type:
+        if row.action_type:
             continue
         side, action = classify_name(row.name)
         conn.execute(activities.update().where(activities.c.id == row.id).values(side=side, action_type=action))
 
-    from app.clhear.l5.map import build_junction_in
-
-    build_junction_in(conn, publish=False)

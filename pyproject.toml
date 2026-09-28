@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clhear"
-version = "0.1.0"
+version = "0.2.0"
 description = "Open engine that turns chosen regulatory sources into a reference compliance blueprint."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -17,6 +17,7 @@ dependencies = [
   "pydantic>=2",
   "pydantic-settings>=2",
   "httpx>=0.27",
+  "anthropic>=1.8",
   "boto3>=1.35",
   "PyYAML>=6",
   "beautifulsoup4>=4.12",
@@ -62,7 +63,6 @@ select = ["E9", "F"]
 "app/clhear/platform/**" = ["F401", "F841"]
 "app/clhear/accounts.py" = ["F401", "F841"]
 "app/clhear/community.py" = ["F401", "F841"]
-"app/clhear/demo_corpus.py" = ["F401", "F841"]
 "app/clhear/eval_studio.py" = ["F401", "F841"]
 "app/clhear/fleets.py" = ["F401", "F841"]
 "app/clhear/releases.py" = ["F401", "F841"]

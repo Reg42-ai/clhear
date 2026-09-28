@@ -5,10 +5,9 @@
 The deterministic parser fills subject / action / condition / object for the
 common "<subject> must <action> [<condition>]" shape. Clauses it cannot
 split (empty subject or action) go to the model with a strict JSON schema.
-Grounding contract: ≥ 80 % of the content words in every returned field must
-occur in the clause text — the model may re-arrange the clause, never add to
-it. Ungrounded answers are discarded and the row keeps its deterministic
-fields.
+Grounding contract: every returned field must be the clause's own words,
+quoted (a field may continue from the lead-in into the list item). Answers
+that are not quotes are discarded and the row keeps its deterministic fields.
 """
 from __future__ import annotations
 
@@ -18,15 +17,14 @@ import re
 import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
-from app.clhear.derived_models import OBLIGATION_TYPES, asserts, obligations
-from app.clhear.l1.models import clauses
+from app.clhear.derived_models import obligations
 from app.clhear.l2 import registry
 from app.clhear.platform.gateway import parse_json_object
 from app.clhear.platform.router import complete
 
 log = logging.getLogger("clhear.l2.structured")
 
-MAX_PER_RUN = 25
+MAX_PER_RUN = 200
 GROUNDING_MIN = 0.8
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP = frozenset({"the", "a", "an", "of", "to", "and", "or", "in", "on", "for", "by", "with", "that", "which",
@@ -55,14 +53,9 @@ def _candidates(conn, limit: int) -> list[dict]:
         query = query.where(limit_to)
     out = []
     for ob in conn.execute(query.order_by(obligations.c.id).limit(limit)).mappings():
-        clause = conn.execute(
-            sa.select(clauses.c.text)
-            .join(asserts, asserts.c.clause_id == clauses.c.id)
-            .where(asserts.c.obligation_id == ob["id"])
-            .where(asserts.c.valid_to.is_(None))
-            .limit(1)
-        ).scalar()
-        out.append({**dict(ob), "clause_text": clause or ob["statement"]})
+        found = registry.obligation_clauses(conn, dict(ob))
+        text = "\n".join(c["text"] for c in reversed(found)) or ob["statement"]
+        out.append({**dict(ob), "clause_text": text, "clauses": found})
     return out
 
 
@@ -74,8 +67,8 @@ def refine_structured(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
         prompt = (
             "Split this regulatory clause into an atomic obligation. Use ONLY words from the clause. JSON only: "
             '{"subject": "who is bound", "action": "what they must do", "condition": "when/if (or empty)", '
-            '"object": "what the action is about (or empty)", "obligation_type": one of '
-            + "|".join(OBLIGATION_TYPES) + "}\n\nCLAUSE:\n" + (ob["clause_text"] or "")[:3000]
+            '"object": "what the action is about (or empty)"}. Every value must be copied verbatim from the '
+            "clause.\n\nCLAUSE:\n" + (ob["clause_text"] or "")[:3000]
         )
         try:
             result = complete(
@@ -92,25 +85,26 @@ def refine_structured(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
         if not fields["subject"] or not fields["action"]:
             rejected += 1
             continue
-        if not all(grounded(fields[k], ob["clause_text"]) for k in FIELDS):
+        quoted = {k: registry.field_quotes(fields[k], ob["clauses"]) for k in FIELDS}
+        if any(v is None for v in quoted.values()):
             rejected += 1
             continue
-        otype = str(parsed.get("obligation_type") or "").lower()
-        if otype not in OBLIGATION_TYPES:
-            otype = ob["obligation_type"] or registry.classify_type(ob["clause_text"], ob["modality"])
         structure = {**fields, "modal": ob["modality"].replace("-", " ") if ob["modality"] else "must"}
+        otype = registry.duty_verb(structure, ob["modality"] or "")
         determination = registry.determination_text(structure, fallback=ob["statement"])
+        previous = ob.get("evidence") if isinstance(ob.get("evidence"), dict) else {}
+        evidence = {**previous, **registry.structure_evidence({**fields, "obligation_type": otype}, ob["clauses"])}
         with engine.begin() as conn:
             why = registry.why_for(
                 ob["id"], clause_id=None, text_hash=ob["text_hash"], method="l2.extract.structured",
                 confidence=float(ob["confidence"] or 0) or None,
-                summary=f"structured split by {result.model}; every field grounded ≥ {int(GROUNDING_MIN * 100)}% in the clause",
+                summary=f"structured split by {result.model}; every field quoted from the clause",
                 model_manifest={"model": result.model, "task": "l2.extract"},
             )
             trail = why.write(conn)
             conn.execute(
                 obligations.update().where(obligations.c.id == ob["id"]).values(
-                    **fields, obligation_type=otype, determination=determination, why_trail_id=trail,
+                    **fields, obligation_type=otype, determination=determination, why_trail_id=trail, evidence=evidence,
                     model_manifest={"model": result.model, "task": "l2.extract"},
                 )
             )

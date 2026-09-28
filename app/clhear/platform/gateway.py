@@ -113,21 +113,55 @@ def parse_json_object(text: str) -> dict:
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        start, end = raw.find("{"), raw.rfind("}")
-        if start < 0 or end <= start:
+        # The first complete object wins; prose after it (even with braces) is ignored.
+        start = raw.find("{")
+        if start < 0:
             raise
-        parsed = json.loads(raw[start : end + 1])
+        parsed, _ = json.JSONDecoder().raw_decode(raw[start:])
     if not isinstance(parsed, dict):
         raise StructuredOutputError("response is not a JSON object")
     return parsed
 
 
+# Anthropic first-party list prices, USD per 1M tokens (input, output).
+ANTHROPIC_PRICING: dict[str, tuple[float, float]] = {
+    "claude-fable-5-1": (10.00, 50.00), "claude-fable-5": (10.00, 50.00),
+    "claude-opus-5-5": (4.00, 20.00), "claude-opus-5": (5.00, 25.00),
+    "claude-opus-4-8": (5.00, 25.00), "claude-opus-4-7": (5.00, 25.00), "claude-opus-4-6": (5.00, 25.00),
+    "claude-sonnet-5": (2.00, 10.00), "claude-sonnet-4-6": (3.00, 15.00), "claude-haiku-4-5": (1.00, 5.00),
+}
+
+
 def price_for(model: str) -> tuple[float, float]:
-    return BEDROCK_PRICING.get(model, _DEFAULT_PRICING)
+    return ANTHROPIC_PRICING.get(model) or BEDROCK_PRICING.get(model, _DEFAULT_PRICING)
+
+
+def _claude_family(model: str) -> str:
+    """The bare Claude id inside a first-party, Bedrock or Vertex model string."""
+    match = re.search(r"claude-[a-z]+-\d+(?:-\d+)?", model or "")
+    return match.group(0) if match else ""
+
+
+def accepts_sampling(model: str) -> bool:
+    """Claude Opus 4.7+, Sonnet 5, Opus 5.x and Fable reject temperature/top_p (400)."""
+    family = _claude_family(model)
+    if not family:
+        return True
+    return bool(re.fullmatch(r"claude-(?:haiku|sonnet|opus)-4(?:-[0-6])?|claude-[a-z]+-3(?:-\d+)?", family))
+
+
+def accepts_effort(model: str) -> bool:
+    family = _claude_family(model)
+    return bool(family) and not re.fullmatch(r"claude-(?:haiku-4-5|sonnet-4-5|[a-z]+-3(?:-\d+)?|[a-z]+-4)", family)
 
 
 class ProviderError(RuntimeError):
-    pass
+    """A provider call failed. ``retryable`` is False for requests that cannot succeed as sent."""
+
+    def __init__(self, message: str, *, retryable: bool = True, retry_after: float | None = None):
+        super().__init__(message)
+        self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class InferError(ProviderError):
@@ -285,52 +319,83 @@ class _ChatProvider:
         return self._client
 
 
-class AnthropicProvider(_ChatProvider):
-    """Anthropic Messages API. The consumer supplies the key and model."""
+class AnthropicProvider:
+    """Claude through the official Anthropic SDK. The consumer supplies the key and model.
+
+    Current models think adaptively; ``CLHEAR_LLM_EFFORT`` (default ``medium``)
+    sets how hard. Sampling parameters are sent only to models that accept them.
+    On Claude Opus 5 and Fable, a safety decline is retried server-side on a
+    fallback model (``fallbacks: "default"``); set ``CLHEAR_LLM_FALLBACKS=false``
+    to turn that off.
+    """
 
     name = "anthropic"
+    DEFAULT_MODEL = "claude-opus-5"
+    MIN_MAX_TOKENS = 16000
+    FALLBACK_BETA = "server-side-fallback-2026-07-01"
+    FALLBACK_MODELS = frozenset({"claude-opus-5", "claude-fable-5-1", "claude-fable-5"})
 
-    def __init__(self, api_key: str, model: str, *, timeout: float = 180.0, client=None):
-        super().__init__(model, timeout=timeout, client=client)
+    def __init__(self, api_key: str, model: str = "", *, timeout: float = 600.0, client=None,
+                 effort: str | None = None, fallbacks: bool | None = None):
         if not api_key or api_key == "CHANGEME":
-            raise ProviderError("ANTHROPIC_API_KEY is not configured")
-        self._api_key = api_key
+            raise ProviderError("ANTHROPIC_API_KEY is not configured", retryable=False)
+        settings = get_settings()
+        self.model = model or self.DEFAULT_MODEL
+        self.effort = effort if effort is not None else (settings.clhear_llm_effort or "medium")
+        self.fallbacks = settings.clhear_llm_fallbacks if fallbacks is None else fallbacks
+        if client is None:
+            import anthropic
+
+            client = anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=0)
+        self._client = client
 
     def complete(self, *, model: str, prompt: str, system: str | None, max_tokens: int,
                  temperature: float = 0.0, json_schema: dict | None = None,
                  task_class: str | None = None, data_class: str | None = None) -> LlmResult:
-        body: dict[str, Any] = {
-            "model": model or self.model,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
+        import anthropic
+
+        used = model or self.model
+        params: dict[str, Any] = {
+            "model": used,
+            # Thinking shares the output budget; a small cap would cut the answer off.
+            "max_tokens": max(max_tokens, self.MIN_MAX_TOKENS),
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:
-            body["system"] = system
-        resp = self._http().post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": self._api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json=body,
-        )
-        if resp.status_code >= 400:
-            raise ProviderError(f"anthropic {resp.status_code}: {resp.text[:300]}")
-        data = resp.json()
-        parts = data.get("content") or []
-        text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
-        usage = data.get("usage") or {}
-        in_tok = int(usage.get("input_tokens") or 0)
-        out_tok = int(usage.get("output_tokens") or 0)
-        price_in, price_out = price_for(body["model"])
+            params["system"] = system
+        if accepts_sampling(used):
+            # Older models only; SDK 1.x has no sampling keyword, the wire field still works.
+            params["extra_body"] = {"temperature": temperature}
+        if accepts_effort(used) and self.effort:
+            params["output_config"] = {"effort": self.effort}
+        try:
+            if self.fallbacks and used in self.FALLBACK_MODELS:
+                response = self._client.beta.messages.create(betas=[self.FALLBACK_BETA], fallbacks="default", **params)
+            else:
+                response = self._client.messages.create(**params)
+        except anthropic.RateLimitError as exc:
+            retry_after = exc.response.headers.get("retry-after") if exc.response is not None else None
+            raise ProviderError(f"anthropic 429: {exc.message}"[:300],
+                                retry_after=float(retry_after) if retry_after and retry_after.replace(".", "", 1).isdigit() else None) from exc
+        except anthropic.APIStatusError as exc:
+            retryable = exc.status_code >= 500 or exc.status_code in {408, 409, 529}
+            raise ProviderError(f"anthropic {exc.status_code}: {exc.message}"[:300], retryable=retryable) from exc
+        except anthropic.APIConnectionError as exc:
+            raise ProviderError(f"anthropic connection error: {exc}"[:300]) from exc
+        if response.stop_reason == "refusal":
+            details = getattr(response, "stop_details", None)
+            category = getattr(details, "category", None) if details else None
+            raise ProviderError(f"anthropic refusal ({category or 'unspecified'})", retryable=False)
+        text = "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
+        in_tok = int(response.usage.input_tokens or 0)
+        out_tok = int(response.usage.output_tokens or 0)
+        served = str(response.model or used)
+        price_in, price_out = price_for(served)
         return LlmResult(
-            text=text, model=str(data.get("model") or body["model"]), provider=self.name,
-            input_tokens=in_tok, output_tokens=out_tok,
+            text=text, model=served, provider=self.name, input_tokens=in_tok, output_tokens=out_tok,
             cost_usd=(in_tok * price_in + out_tok * price_out) / 1_000_000,
-            model_reported=bool(data.get("model")), finish_reason=data.get("stop_reason"),
-            request_id=str(data["id"]) if data.get("id") else None,
+            model_reported=bool(response.model), finish_reason=response.stop_reason,
+            request_id=getattr(response, "_request_id", None) or response.id,
         )
 
 
@@ -361,13 +426,21 @@ class OpenAICompatibleProvider(_ChatProvider):
         }
         if json_schema:
             body["response_format"] = {"type": "json_object"}
-        resp = self._http().post(
-            f"{self._base_url}/chat/completions",
-            headers={"authorization": f"Bearer {self._api_key}", "content-type": "application/json"},
-            json=body,
-        )
+        import httpx
+
+        try:
+            resp = self._http().post(
+                f"{self._base_url}/chat/completions",
+                headers={"authorization": f"Bearer {self._api_key}", "content-type": "application/json"},
+                json=body,
+            )
+        except httpx.TransportError as exc:
+            raise ProviderError(f"openai_compatible connection error: {exc}"[:300]) from exc
         if resp.status_code >= 400:
-            raise ProviderError(f"openai_compatible {resp.status_code}: {resp.text[:300]}")
+            retry_after = resp.headers.get("retry-after")
+            raise ProviderError(f"openai_compatible {resp.status_code}: {resp.text[:300]}",
+                                retryable=resp.status_code in {408, 409, 429} or resp.status_code >= 500,
+                                retry_after=float(retry_after) if retry_after and retry_after.isdigit() else None)
         data = resp.json()
         try:
             text = data["choices"][0]["message"].get("content") or ""
@@ -410,14 +483,28 @@ class BedrockProvider:
                  temperature: float = 0.0, json_schema: dict | None = None,
                  task_class: str | None = None, data_class: str | None = None) -> LlmResult:
         used = model or self.model
+        config: dict[str, Any] = {"maxTokens": max(max_tokens, AnthropicProvider.MIN_MAX_TOKENS)
+                                  if _claude_family(used) else max_tokens}
+        if accepts_sampling(used):
+            config["temperature"] = temperature
         kwargs: dict[str, Any] = {
             "modelId": used,
             "messages": [{"role": "user", "content": [{"text": prompt}]}],
-            "inferenceConfig": {"maxTokens": max_tokens, "temperature": temperature},
+            "inferenceConfig": config,
         }
         if system:
             kwargs["system"] = [{"text": system}]
-        data = self._runtime().converse(**kwargs)
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        try:
+            data = self._runtime().converse(**kwargs)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            retryable = code in {"ThrottlingException", "ServiceUnavailableException", "InternalServerException",
+                                 "ModelNotReadyException", "ModelTimeoutException"}
+            raise ProviderError(f"bedrock {code}: {exc}"[:300], retryable=retryable) from exc
+        except BotoCoreError as exc:
+            raise ProviderError(f"bedrock connection error: {exc}"[:300]) from exc
         parts = ((data.get("output") or {}).get("message") or {}).get("content") or []
         text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
         usage = data.get("usage") or {}
@@ -498,6 +585,8 @@ class Gateway:
         self._provider = provider
         self._fleet_cap = fleet_daily_cap_usd if fleet_daily_cap_usd is not None else settings.clhear_gateway_fleet_daily_cap_usd
         self._global_cap = global_daily_cap_usd if global_daily_cap_usd is not None else settings.clhear_gateway_global_daily_cap_usd
+        # Per-process call outcomes, read by the scope build to report model health.
+        self.stats: dict = {"ok": 0, "failed": 0, "last_error": ""}
         self._frontier_month_cap = (
             frontier_monthly_cap_usd
             if frontier_monthly_cap_usd is not None
@@ -549,14 +638,19 @@ class Gateway:
         If required_keys is given the response must be a JSON object containing
         all of them (structured-output validation), retried within the budget.
         """
-        if self._spend_today(fleet) >= self._fleet_cap:
-            raise SpendCapExceeded(f"fleet '{fleet}' daily cap ${self._fleet_cap} reached — hard stop")
-        if self._spend_today() >= self._global_cap:
-            raise SpendCapExceeded(f"global daily cap ${self._global_cap} reached — hard stop")
-        if (model in PREMIUM_MODELS or tier == "frontier") and self.premium_spend_month() >= self._frontier_month_cap:
-            raise SpendCapExceeded(
-                f"premium monthly cap ${self._frontier_month_cap} reached — hard stop"
-            )
+        try:
+            if self._spend_today(fleet) >= self._fleet_cap:
+                raise SpendCapExceeded(f"fleet '{fleet}' daily cap ${self._fleet_cap} reached — hard stop")
+            if self._spend_today() >= self._global_cap:
+                raise SpendCapExceeded(f"global daily cap ${self._global_cap} reached — hard stop")
+            if (model in PREMIUM_MODELS or tier == "frontier") and self.premium_spend_month() >= self._frontier_month_cap:
+                raise SpendCapExceeded(
+                    f"premium monthly cap ${self._frontier_month_cap} reached — hard stop"
+                )
+        except SpendCapExceeded as exc:
+            self.stats["failed"] += 1
+            self.stats["last_error"] = str(exc)
+            raise
 
         actor = provider or self._provider
         last_error: Exception | None = None
@@ -580,9 +674,16 @@ class Gateway:
             except (json.JSONDecodeError, StructuredOutputError, ConnectionError, TimeoutError, ProviderError) as exc:
                 last_error = exc
                 result = None
-                time.sleep(2**attempt * 0.5)
+                if isinstance(exc, ProviderError) and not exc.retryable:
+                    break  # a 400/401/404 or a refusal will not change on retry
+                if attempt + 1 < max_retries:
+                    wait = getattr(exc, "retry_after", None)
+                    time.sleep(min(float(wait), 60.0) if wait else 2**attempt * 0.5)
         if result is None:
-            raise StructuredOutputError(f"gateway call failed after {max_retries} attempts: {last_error}")
+            self.stats["failed"] += 1
+            self.stats["last_error"] = str(last_error)[:300]
+            raise StructuredOutputError(f"gateway call failed: {last_error}")
+        self.stats["ok"] += 1
 
         with self._engine.begin() as conn:
             call_id = conn.execute(

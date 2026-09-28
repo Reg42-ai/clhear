@@ -143,7 +143,7 @@ def to_infer_yaml() -> str:
     """Render tasks.clhear.yaml for deployment notes (kept byte-identical by a test)."""
     lines = [
         "# CLHEAR task classes for the configured model provider — generated from",
-        "# app/clhear/platform/task_classes.py (CLHEAR-MVP). Do not hand-edit.",
+        "# app/clhear/platform/task_classes.py. Do not hand-edit.",
         "# Derivation classes: procurement-clean (US/EU origin) Bedrock models only.",
         "employee_prefix: clhear-",
         "tasks:",

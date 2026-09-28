@@ -18,7 +18,8 @@ from sqlalchemy.engine import Engine
 from app.clhear.derived_models import obligations
 from app.clhear.l1.models import clauses, family_members, source_versions, sources
 from app.clhear.l2 import registry
-from app.clhear.l2.extract import ADDRESSEE, MAX_STATEMENT, _title_from, detect_duty, not_a_duty, obligation_id, why_id
+from app.clhear.l2.extract import (ADDRESSEE, MAX_STATEMENT, _title_from, clause_contexts, container_clause_ids,
+                                   detect_duty, duty_text, not_a_duty, obligation_id, sentence_text, why_id)
 from app.clhear.platform import record
 from app.clhear.platform.gateway import parse_json_object
 from app.clhear.platform.ids import next_id
@@ -27,7 +28,7 @@ from app.clhear.platform.router import complete
 log = logging.getLogger("clhear.l2.triage")
 
 WEAK_MODAL = re.compile(r"\b(?:should|ought to|may|is expected to|are expected to)\b", re.I)
-MAX_PER_RUN = 25
+MAX_PER_RUN = 200
 
 
 def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
@@ -51,18 +52,25 @@ def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
         for sid, src in srcs.items():
             if sid not in binding or sid not in versions or not in_scope(src.key):
                 continue
+            containers = container_clause_ids(conn, versions[sid].id)
+            contexts = clause_contexts(conn, versions[sid].id)
             for row in conn.execute(
                 sa.select(clauses).where(clauses.c.source_version_id == versions[sid].id)
-                .where(clauses.c.public_ok.is_(True))
+                .where(clauses.c.public_ok.is_(True)).order_by(clauses.c.ordering)
             ):
-                text = row.text or ""
-                if obligation_id(src.key, row.ref) in existing:
+                if row.id in containers:
                     continue
-                if detect_duty(text, row.ref or "", "") is not None:
+                ref = row.ref or f"clause-{row.ordering}"
+                context = contexts.get(row.id) or {}
+                text = duty_text(row.text or "", context)
+                heading = context.get("heading", "")
+                if obligation_id(src.key, ref) in existing:
+                    continue
+                if detect_duty(text, ref, heading) is not None:
                     continue
                 # The rules' "not a duty" (procedure, construction, penalties) is final;
                 # a model is never asked to overrule it.
-                if not_a_duty(text, row.ref or "", ""):
+                if not_a_duty(text, ref, heading):
                     continue
                 if not WEAK_MODAL.search(text):
                     continue
@@ -70,8 +78,11 @@ def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
                     continue
                 out.append({
                     "source_key": src.key,
-                    "ref": row.ref,
+                    "ref": ref,
+                    "sentence": sentence_text(row.text or "", context),
                     "text": text,
+                    "own_text": row.text or "",
+                    "lead_clause": context.get("lead_clause"),
                     "text_hash": row.text_hash,
                     "clause_id": row.id,
                     "jurisdiction": src.jurisdiction,
@@ -118,7 +129,8 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
         if not span_is_grounded(span, cand["text"]):
             rejected += 1
             continue
-        if not parsed.get("is_duty"):
+        verdict = parsed.get("is_duty")
+        if not (verdict is True or str(verdict).strip().lower() == "true"):
             rejected += 1
             continue
         oid = obligation_id(cand["source_key"], cand["ref"])
@@ -126,7 +138,19 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
         if len(statement) > MAX_STATEMENT:
             statement = statement[: MAX_STATEMENT - 1].rsplit(" ", 1)[0] + "…"
         addressee_match = ADDRESSEE.search(cand["text"])
-        structured = registry.structured_fields(cand["text"], str(parsed.get("modality") or "should"))
+        structured = registry.structured_fields(cand.get("sentence") or cand["text"], str(parsed.get("modality") or "should"))
+        from types import SimpleNamespace
+
+        from app.clhear import evidence as ev
+        from app.clhear.l2.extract import _evidence
+
+        found = _evidence(SimpleNamespace(clause_id=cand["clause_id"], source_key=cand["source_key"], ref=cand["ref"],
+                                          own_text=cand["own_text"], lead_clause=cand.get("lead_clause")), structured)
+        clauses_read = [{"id": cand["clause_id"], "source_key": cand["source_key"], "ref": cand["ref"],
+                         "text": cand["own_text"]}]
+        if cand.get("lead_clause"):
+            clauses_read.append({**cand["lead_clause"], "source_key": cand["source_key"]})
+        found["model_span"] = ev.quote_first(clauses_read, span)
         with engine.begin() as conn:
             why = registry.why_for(
                 oid, clause_id=cand["clause_id"], text_hash=cand["text_hash"], method="duty-triage-v1",
@@ -156,6 +180,7 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
                     text_hash=cand["text_hash"],
                     source_version_label=cand["version_label"] or "",
                     effective_from=cand.get("as_of_date"),
+                    evidence=found,
                     **structured,
                 ),
                 why=why,
@@ -164,7 +189,7 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
             trail = why_id(conn, oid)
             registry.upsert_assert(
                 conn, obligation_id=oid, clause_id=cand["clause_id"], source_key=cand["source_key"],
-                clause_ref=cand["ref"], text=cand["text"], text_hash=cand["text_hash"],
+                clause_ref=cand["ref"], text=cand["own_text"], text_hash=cand["text_hash"],
                 strength="implied", why=trail,
             )
             registry.record_change(

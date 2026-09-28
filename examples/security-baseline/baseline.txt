@@ -1,0 +1,31 @@
+Example information security baseline
+
+This is an illustrative text written for the CLHEAR walkthrough. It is not a law or a published standard.
+
+Part 1
+Governance
+
+Section 1. Every organisation shall appoint a person responsible for information security and record the appointment.
+
+Section 2. The management body shall approve the information security policy and review it at least once a year.
+
+Part 2
+Controls
+
+Section 3. Every organisation shall keep an inventory of the systems that store or process customer data.
+
+Section 4. Every organisation shall:
+(a) grant access to systems only to people who need it for their role;
+(b) review user access rights at least every six months;
+(c) remove access within two working days of a person leaving.
+
+Section 5. Where an organisation processes personal data, it shall encrypt that data when it is stored and when it is sent over public networks.
+
+Section 6. Every organisation shall keep a log of security incidents and shall notify affected customers without undue delay where an incident is likely to harm them.
+
+Section 7. Staff should complete security awareness training when they join and every year after that.
+
+Part 3
+Supervision
+
+Section 8. The supervisory authority shall publish guidance on the application of this baseline.

@@ -70,18 +70,17 @@ obligations = sa.Table(
     # Canonical obligation this row was deduplicated into (NULL = canonical itself).
     sa.Column("canonical_id", sa.Text, nullable=True),
     sa.Column("review_confidence", sa.Numeric(4, 3), nullable=True),
+    # Quotes of the clause text each structured field came from (app.clhear.evidence).
+    sa.Column("evidence", Json, nullable=True),
     schema=L2_SCHEMA,
 )
 
 # --------------------------------------------------------- L2 registry edges
 
-OBLIGATION_TYPES = (
-    "conduct", "disclosure", "reporting", "record_keeping", "governance",
-    "prudential", "prohibition", "authorisation", "consumer_protection", "other",
-)
 ASSERT_STRENGTHS = ("explicit", "implied")
 L2_CHANGE_KINDS = ("added", "updated", "revoked")
-BLOCK_KINDS = ("System", "Document", "Role", "Configuration", "Process", "Workflow", "Asset", "Body")
+# The engine's data model. "Unspecified": the text names the measure but not what kind of thing it is.
+BLOCK_KINDS = ("System", "Document", "Role", "Configuration", "Process", "Workflow", "Asset", "Body", "Unspecified")
 
 asserts = sa.Table(
     "asserts",
@@ -198,6 +197,7 @@ blocks = sa.Table(
     ),
     sa.Column("purpose", sa.Text, nullable=False, default="", server_default=""),
     sa.Column("canonical_id", sa.Text, nullable=True),  # set on blocks harmonised into a canonical one
+    sa.Column("evidence", Json, nullable=True),
     schema=L3_SCHEMA,
 )
 
@@ -213,6 +213,7 @@ requires = sa.Table(
     sa.Column("rationale_end", sa.Integer, nullable=True),
     sa.Column("method", sa.Text, nullable=False, default=""),  # curated-anchor | deterministic | llm
     sa.Column("obligation_text_hash", sa.Text, nullable=False, default=""),
+    sa.Column("evidence", Json, nullable=True),
     schema=L3_SCHEMA,
 )
 
@@ -234,6 +235,7 @@ characteristics = sa.Table(
     sa.Column("backing_obligation_id", sa.Text, nullable=True),
     sa.Column("backing_span", sa.Text, nullable=False, default=""),
     sa.Column("method", sa.Text, nullable=False, default=""),
+    sa.Column("evidence", Json, nullable=True),
     schema=L3_SCHEMA,
 )
 
@@ -270,6 +272,7 @@ activities = sa.Table(
     ),
     sa.Column("action_type", sa.Text, nullable=False, default=""),
     sa.Column("canonical_id", sa.Text, nullable=True),
+    sa.Column("evidence", Json, nullable=True),
     schema=L5_SCHEMA,
 )
 
@@ -296,6 +299,7 @@ operates = sa.Table(
     sa.Column("obligation_refs", Json, nullable=False, default=list),
     sa.Column("rationale", sa.Text, nullable=False, default=""),
     sa.Column("method", sa.Text, nullable=False, default=""),
+    sa.Column("evidence", Json, nullable=True),
     schema=L5_SCHEMA,
 )
 
@@ -351,6 +355,7 @@ license_types = sa.Table(
     sa.Column("status", sa.Text, nullable=False, default="ai_generated"),
     sa.Column("generated_by", sa.Text, nullable=False, default=""),
     sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    sa.Column("evidence", Json, nullable=True),
     schema=L4_SCHEMA,
 )
 
@@ -367,7 +372,7 @@ licences = sa.Table(
     sa.Column("regulator", sa.Text, nullable=False, default=""),
     sa.Column("name", sa.Text, nullable=False),
     sa.Column("regime", sa.Text, nullable=False, default=""),  # instrument creating the authorisation
-    sa.Column("register", sa.Text, nullable=False, default=""),  # register key (fca_register, esma_registers, sec_finra)
+    sa.Column("register", sa.Text, nullable=False, default=""),  # register key (fca_register, esma_registers, sec_registers)
     sa.Column("register_url", sa.Text, nullable=False, default=""),
     sa.Column("register_ref", sa.Text, nullable=False, default=""),  # permission / activity code in the register
     sa.Column("aliases", Json, nullable=False, default=list),
@@ -446,6 +451,7 @@ applies_to = sa.Table(
     sa.Column("rationale", sa.Text, nullable=False, default=""),
     sa.Column("method", sa.Text, nullable=False, default=""),
     sa.Column("obligation_text_hash", sa.Text, nullable=False, default=""),
+    sa.Column("evidence", Json, nullable=True),
     schema=L4_SCHEMA,
 )
 
@@ -525,6 +531,26 @@ minimality_proofs = sa.Table(
     sa.Column("load_bearing_for", Json, nullable=False, default=list),
     sa.Column("removal_impact", Json, nullable=False, default=dict),
     sa.Column("redundant", sa.Boolean, nullable=False, default=False),
+    schema=L6_SCHEMA,
+)
+
+# evidence_gaps: what a build could not derive from the texts in scope, and
+# which kind of source would let it (app.clhear.evidence). Rebuilt per layer
+# and scope on every build: a report of the current state, not a derived fact.
+evidence_gaps = sa.Table(
+    "evidence_gaps",
+    metadata,
+    sa.Column("id", sa.Text, primary_key=True),  # GAP-<digest>
+    sa.Column("scope", sa.Text, nullable=False, index=True),
+    sa.Column("layer", sa.Text, nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("subject", sa.Text, nullable=False, default=""),
+    sa.Column("source_key", sa.Text, nullable=False, default=""),
+    sa.Column("clause_ref", sa.Text, nullable=False, default=""),
+    sa.Column("missing", sa.Text, nullable=False, default=""),
+    sa.Column("recommendation", sa.Text, nullable=False, default=""),
+    sa.Column("detail", Json, nullable=False, default=dict),
+    sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     schema=L6_SCHEMA,
 )
 

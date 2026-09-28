@@ -69,23 +69,10 @@ def adapter_for(entry: dict) -> Adapter:
     fetch = entry.get("fetch") or {}
     key = entry["adapter"]
     if fetch.get("blocked"):
-        from app.clhear.l1.poc_review import enabled
-        url = _url(entry)
-        if not enabled() or not url:
-            return DeclarationGapAdapter(entry)
-        role = entry.get("source_role") or "document"
-        if role in {"collection", "reference"} and key != "restricted_file":
-            if key in PDF_ADAPTERS or fetch.get("kind") == "pdf":
-                from app.clhear.l1.adapters.pdf_docling import PdfOfficialAdapter
-                return PdfOfficialAdapter(
-                    source_key=entry["key"], title=entry["name"], url=url, adapter=key, meta=meta,
-                )
-            from app.clhear.l1.adapters.official_html import OfficialHtmlAdapter
-            return OfficialHtmlAdapter(
-                source_key=entry["key"], title=entry["name"], url=url, adapter=key, meta=meta,
-                jurisdiction=entry.get("jurisdiction", ""), issuer=entry.get("issuer", ""),
-                kind=entry.get("kind", "regulation"), license=entry.get("license", "open"),
-            )
+        return DeclarationGapAdapter(entry)
+    from app.clhear.l1.adapters.document import KEYS as DOCUMENT_KEYS, DocumentAdapter
+    if key in DOCUMENT_KEYS:
+        return DocumentAdapter(entry, meta)
     if fetch.get("document_type") == "publisher_publication":
         from app.clhear.l1.adapters.publisher import GenericPublisherDocumentAdapter
         return GenericPublisherDocumentAdapter(source_key=entry["key"], title=entry["name"], url=_url(entry),
@@ -154,12 +141,12 @@ def adapter_for(entry: dict) -> Adapter:
 # HLD v2 §4.1 first-class publisher adapters (replace the generic HTML/PDF
 # fallbacks for these keys; keys stay the fleet schedule names).
 PUBLISHER_ADAPTERS = frozenset(
-    {"fca_handbook", "sec_edgar", "finra", "esma", "fatf", "bis_basel", "iosco", "mas", "asic", "isa", "irs_gov",
-     "fca_enforcement", "sec_enforcement", "finra_enforcement"}
+    {"fca_handbook", "sec_edgar", "esma", "fatf", "bis_basel", "iosco", "mas", "asic", "isa", "irs_gov",
+     "fca_enforcement", "sec_enforcement"}
 )
 
 
-ENFORCEMENT_ADAPTERS = frozenset({"fca_enforcement", "sec_enforcement", "finra_enforcement"})
+ENFORCEMENT_ADAPTERS = frozenset({"fca_enforcement", "sec_enforcement"})
 
 
 def _publisher_for(entry: dict, meta: SourceMeta, fetch: dict):
@@ -173,21 +160,15 @@ def _publisher_for(entry: dict, meta: SourceMeta, fetch: dict):
         return FcaHandbookAdapter(
             fetch.get("sourcebook", "PRIN"), chapters=fetch.get("chapters"), **common
         )
-    if key == "finra" and fetch.get("document_type") in {"publication", "attachment"}:
-        from app.clhear.l1.adapters.finra_document import FinraDocumentAdapter
-        return FinraDocumentAdapter(**common, document_type=fetch["document_type"])
     if key in {"sec_edgar", "sec_enforcement"} and fetch.get("document_type") == "sec_page":
         from app.clhear.l1.adapters.sec_pages import SecPageAdapter
         return SecPageAdapter(**common, adapter=key)
-    if key in {"sec_edgar", "finra"}:
-        adapter = SecEdgarAdapter(channel=fetch.get("channel", "finra" if key == "finra" else "sec"), **common)
-        adapter.key = key
-        return adapter
+    if key == "sec_edgar":
+        return SecEdgarAdapter(**common)
     if key in ENFORCEMENT_ADAPTERS:
         from app.clhear.l1.adapters import enforcement as enf
 
-        return {"fca_enforcement": enf.FcaFinalNoticesAdapter, "sec_enforcement": enf.SecEnforcementAdapter,
-                "finra_enforcement": enf.FinraDisciplinaryAdapter}[key](**common)
+        return {"fca_enforcement": enf.FcaFinalNoticesAdapter, "sec_enforcement": enf.SecEnforcementAdapter}[key](**common)
     cls = {
         "esma": sb.EsmaAdapter,
         "fatf": sb.FatfAdapter,

@@ -68,7 +68,9 @@ def _tables(layer: str) -> list:
         "L1": [l1.sources, l1.source_versions, l1.clauses],
         "L2": [d.obligations],
         "L3": [d.blocks, d.requires, d.characteristics],
-        "L4": [d.applies_to, d.licences, d.profiles, d.license_types],
+        # Profiles are what a host submits, not something L4 derives: a profile
+        # saved during a build must not look like a changed input layer.
+        "L4": [d.applies_to, d.licences, d.license_types],
         "L5": [d.activities, d.implies, d.operates, d.mitigates],
         "L6": [d.blueprints, d.blueprint_items],
         "L7": [l7.enforcement_events, l7.enforcement_links, l7.risk_scores],

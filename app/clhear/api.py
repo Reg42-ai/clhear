@@ -3,14 +3,12 @@
 """Host HTTP API. A run is inserted here and executed by the worker."""
 from __future__ import annotations
 
-import hashlib
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.clhear.contribution import ContributionProposal, ProposalRejected, parse_proposal
-from app.clhear.l1.adapters import ADAPTER_KEYS, PUBLISHER_ADAPTER_CLASSES
+from app.clhear.l1.adapters import PUBLISHER_ADAPTER_CLASSES
 from app.clhear.l1.scopes import SCOPE_ENV
 from app.clhear.service_auth import require_token
 from app.clhear.settings import get_settings
@@ -66,24 +64,17 @@ def _engine():
     return engine()
 
 
-def _attribute_keys() -> set[str]:
-    from app.clhear import curated
-
-    return {item["key"] for item in curated.load("l4_attribute_schema")}
-
-
 def _check_attributes(attributes: dict) -> None:
+    from app.clhear.l4.validate import validate
+
     if not isinstance(attributes, dict):
         raise HTTPException(status_code=422, detail="attributes must be an object")
-    unknown = sorted(set(attributes) - _attribute_keys())
-    if unknown:
+    errors = validate(None, attributes)["errors"]
+    if errors:
         raise HTTPException(
             status_code=422,
-            detail=(
-                f"unknown profile field {unknown}. "
-                "A profile may include jurisdictions, authorisations, products, customer_base, "
-                "channels, data_footprint, crypto_services, financial_entity_dora."
-            ),
+            detail=" ".join(e["message"] for e in errors)
+            + " A profile may include jurisdictions, roles, conditions and licences.",
         )
 
 
@@ -161,8 +152,12 @@ def create_app() -> FastAPI:
 
     @application.get("/v1/adapters")
     def adapters() -> dict:
-        rows = [{"key": key, "kind": "starter"} for key in ADAPTER_KEYS]
-        rows.extend({"key": key, "kind": "publisher", "class": path} for key, path in sorted(PUBLISHER_ADAPTER_CLASSES.items()))
+        from app.clhear.l1.adapters import SOURCE_ADAPTERS
+
+        rows = [{**row, "kind": "general" if row["key"] in {"local_text", "url"} else "official"} for row in SOURCE_ADAPTERS]
+        rows.extend({"key": key, "kind": "publisher", "reads": "A publisher-specific page grammar",
+                     "locator": {"url": "https://... on that publisher's site"}}
+                    for key in sorted(PUBLISHER_ADAPTER_CLASSES))
         return {"adapters": rows}
 
     @application.get("/v1/sources")
@@ -201,37 +196,25 @@ def create_app() -> FastAPI:
         from app.clhear import hoststore
         from app.clhear.l1.fleet import adapter_for
 
-        row = hoststore.get_source(_engine(), key)
-        if row is None:
-            raise HTTPException(status_code=404, detail="source not found")
-        locator = row["locator"] if isinstance(row["locator"], dict) else {}
-        text = locator.get("text")
-        path = locator.get("path")
-        if text or path:
-            body = text if isinstance(text, str) else Path(path).read_text(encoding="utf-8")
-            raw = body.encode("utf-8")
-            return {
-                "stored": False,
-                "version": "local:" + hashlib.sha256(raw).hexdigest(),
-                "nodes": 1,
-                "bytes": len(raw),
-            }
+        from app.clhear.l1.models import CLAUSE_TYPES
+
         entry = hoststore.registry_entries(_engine(), [key])
         if not entry:
             raise HTTPException(status_code=404, detail="source not found")
         try:
             fetched = adapter_for(entry[0]).fetch()
         except Exception as exc:
-            raise HTTPException(status_code=422, detail=str(exc)[:500]) from exc
+            raise HTTPException(status_code=422, detail=f"{type(exc).__name__}: {str(exc)[:480]}") from exc
         if fetched is None:
-            return {"stored": False, "version": None, "nodes": 0, "bytes": 0}
-        nodes = 0
-        for artifact in fetched.artifacts:
-            nodes += 1
+            return {"stored": False, "version": None, "nodes": 0, "clauses": 0, "bytes": 0, "preview": []}
         tree = getattr(fetched, "tree", None) or []
-        nodes = max(nodes, _count_nodes(tree))
+        walked = [node for root in tree for node in root.walk()]
+        clause_nodes = [node for node in walked if node.node_type in CLAUSE_TYPES and node.ref]
         nbytes = sum(len(artifact.content or b"") for artifact in fetched.artifacts)
-        return {"stored": False, "version": fetched.version_label, "nodes": nodes, "bytes": nbytes}
+        preview = [{"clause_ref": node.ref, "text": " ".join(node.subtree_text().split())[:200]}
+                   for node in clause_nodes[:8]]
+        return {"stored": False, "version": fetched.version_label, "nodes": len(walked),
+                "clauses": len(clause_nodes), "bytes": nbytes, "preview": preview}
 
     @application.get("/v1/scopes")
     def list_scopes() -> dict:
@@ -269,7 +252,20 @@ def create_app() -> FastAPI:
         out = _profile_out(row)
         out["status"] = stored.get("status")
         out["engine_id"] = stored.get("id")
+        validity = stored.get("validity") if isinstance(stored.get("validity"), dict) else {}
+        out["validation"] = {"valid": stored.get("status") == "valid", "errors": validity.get("errors") or [],
+                             "warnings": validity.get("warnings") or []}
         return out
+
+    @application.get("/v1/profile-schema")
+    def profile_schema(scope: str | None = Query(default=None)) -> dict:
+        from app.clhear.l4.validate import profile_schema as schema
+
+        with _engine().connect() as conn:
+            try:
+                return schema(conn, scope)
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @application.get("/v1/profiles/{profile_id}")
     def get_profile(profile_id: str) -> dict:
@@ -323,6 +319,9 @@ def create_app() -> FastAPI:
             "scope": row["scope"],
             "run_id": row["run_id"],
             "layers": body.get("layers") or {},
+            "sources": body.get("sources") or {},
+            "failed_sources": body.get("failed_sources") or [],
+            "lineage": body.get("lineage") or {},
             "profiles": sorted((body.get("profiles") or {}).keys()),
             "created_at": _iso(row["created_at"]),
         }
@@ -405,14 +404,6 @@ def _write_source(key: str, body: SourceBody) -> dict:
     return _source_out(row)
 
 
-def _count_nodes(tree) -> int:
-    count = 0
-    for node in tree or []:
-        count += 1
-        count += _count_nodes(getattr(node, "children", None) or [])
-    return count
-
-
 def _release_or_404(release_id: str) -> dict:
     from app.clhear import hoststore
 
@@ -430,6 +421,13 @@ def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> di
         "coverage": composition.get("coverage") or [],
         "minimality": composition.get("minimality") or {},
         "coverage_summary": composition.get("coverage_summary") or {},
+        "not_applicable": composition.get("not_applicable") or [],
+        "undetermined": composition.get("undetermined") or [],
+        "open_questions": composition.get("open_questions") or [],
+        "evidence_gaps": composition.get("evidence_gaps") or [],
+        "profile_warnings": composition.get("profile_warnings") or [],
+        "scope": composition.get("scope"),
+        **({"sample": True} if composition.get("sample") else {}),
         "engine_version": composition.get("engine_version"),
     }
 

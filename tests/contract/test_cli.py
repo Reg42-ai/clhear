@@ -46,7 +46,7 @@ def test_init_doctor_and_quickstart_write_sample_layers(offline, monkeypatch, ca
     assert doctor["provider"] == "fake"
     assert doctor["live_run"] == "blocked"
     assert main(["version"]) == 0
-    assert capsys.readouterr().out.strip() == "v0.1.0"
+    assert capsys.readouterr().out.strip() == "v0.2.0"
     assert main(["quickstart"]) == 0
     summary = json.loads(capsys.readouterr().out)
     assert summary["items"] >= 1

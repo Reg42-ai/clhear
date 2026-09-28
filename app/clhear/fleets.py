@@ -66,7 +66,7 @@ def compose_stored_profiles(engine: Engine, profile_ids: list[str] | None = None
 
 def run_nightly_stack(engine: Engine, llm, *, force: bool = False) -> dict:
     """Extract → triage → consolidate → L3/L4/L5/L6/L7/L8 → eval gates."""
-    from app.clhear import curated
+    from app.clhear.curated import seed_data_model
     from app.clhear.l2.concepts import flag_stale_concepts
     from app.clhear.l2.consolidate import draft_and_propose
     from app.clhear.l2.extract import run_extraction
@@ -87,12 +87,11 @@ def run_nightly_stack(engine: Engine, llm, *, force: bool = False) -> dict:
     from app.clhear.l3.harmonize import harmonize as l3_harmonize
 
     started = datetime.now(timezone.utc)
-    seeded = curated.seed(engine)
+    seeded = seed_data_model(engine)
     extraction = run_extraction(engine)
     triage = triage_duties(engine, llm)
     structured = refine_structured(engine, llm)
     l2_changes = nightly_change_pass(engine, llm)
-    concepts_seed = curated.seed_concepts(engine)
     flagged = flag_stale_concepts(engine)
     consolidation = draft_and_propose(engine, llm)
     registry_consolidation = l2_consolidate(engine)
@@ -178,8 +177,8 @@ def run_nightly_stack(engine: Engine, llm, *, force: bool = False) -> dict:
         "l2_basis_integrity", "l2_extraction_quality", "l2_concept_integrity",
         "l2_coverage", "l2_precision", "l2_dedupe", "l2_change_inference",
         "l3_completeness", "l3_characteristics", "l3_reuse", "l3_precision",
-        "l3_l5_referential", "l4_validity", "l4_applicability", "l4_grounding",
-        "l5_completeness", "l5_mapping", "l5_precision",
+        "l3_l5_referential", "l4_applicability", "l4_grounding",
+        "l5_completeness",
         "l6_completeness", "l6_minimality", "l6_reference", "l6_explanation", "l6_citation",
         "l7_linker", "l7_brier", "l7_number_echo",
         "l8_k_anonymity", "l8_reidentification", "l8_traceability", "l8_fill_rubric",
@@ -225,8 +224,7 @@ def run_nightly_stack(engine: Engine, llm, *, force: bool = False) -> dict:
         "registry_consolidation": registry_consolidation,
         "reviews": reviews,
         "human_edits": {lay: {k: v for k, v in out.items() if k != "details"} for lay, out in human_edits.items()},
-        "curated": seeded,
-        "concepts": concepts_seed,
+        "data_model": seeded,
         "consolidation": consolidation,
         "flagged_concepts": flagged,
         "blocks": blocks,

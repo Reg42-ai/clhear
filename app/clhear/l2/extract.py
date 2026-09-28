@@ -27,7 +27,7 @@ from app.clhear.platform.ids import next_id
 
 log = logging.getLogger("clhear.l2")
 
-EXTRACTOR_VERSION = "deterministic-v4"
+EXTRACTOR_VERSION = "deterministic-v6"
 
 # Duty modality patterns, strongest first. Case-insensitive, matched against
 # the clause text. Deliberately conservative: high precision over recall.
@@ -58,7 +58,8 @@ NON_DUTY_HEADINGS = re.compile(
 PROCEDURAL_HEADINGS = re.compile(
     r"\b(?:proceedings?|procedure for|review of (?:an? )?orders?|rehearing|judicial review|service of|"
     r"jurisdiction of|penalt(?:y|ies)|civil actions?|temporary orders?|cease[- ]and[- ]desist|"
-    r"notice and (?:opportunity for )?hearing|hearings?|appeals?|investigations?|injunctions?)\b",
+    r"notice and (?:opportunity for )?hearing|hearings? (?:before|by)|appeals? (?:against|from|to)|injunctions?)\b"
+    r"|^\s*(?:hearings?|appeals?)\s*$",
     re.I,
 )
 
@@ -77,15 +78,23 @@ ANY_MODAL = re.compile(
     re.I,
 )
 
-# A provision whose modal governs a public authority — the Commission's powers,
-# a court's review, an agency's procedure — states no duty of a regulated
-# person: "Whenever the Commission shall have reason to believe ...",
-# "The Commission, by order, shall censure ...". Read in the words just
-# before the first modal, so "it shall be unlawful for any investment adviser"
-# and "Member States shall ensure that investment firms" stay duties.
+# A provision whose modal governs a public body — an authority's powers, a
+# court's review, a department's procedure — states no duty of the addressees:
+# "Whenever the Commission shall have reason to believe ...", "The Secretary
+# shall publish ...". The test is grammatical: the words just before the first
+# modal name a public body by its generic kind, whatever the sector. So "it
+# shall be unlawful for any adviser" and "Member States shall ensure that ..."
+# stay duties.
 AUTHORITY_SUBJECT = re.compile(
-    r"\b(?:the|such|any)\s+(?:Commission|Supreme Court|court of appeals|district court|courts?|"
-    r"Attorney General|Secretary|Director)\b[^.;]{0,40}$",
+    r"(?:^|[.;:\n)]\s*|\b(?:whenever|where|when|if|unless|and|or|then)\s+)\s*(?:\d+[.)]\s*)?"
+    r"(?:the|such|any|each|every|a|an)\s+"
+    # Kinds that only ever name a public body, with up to three modifiers ("the competent authority").
+    r"(?:(?:[\w\-]+\s+){0,3}?(?:authorit(?:y|ies)|courts?|tribunal|regulator|ombudsman|attorney general)"
+    # Words that also name an organisation's own units or charges ("the finance department", "a company
+    # secretary", "the commission charged") count only as a defined, capitalised name ("the Department").
+    r"|(?-i:(?:[A-Z][\w\-]*\s+){0,3}(?:Commission|Agency|Department|Secretary(?: of State)?|Minister|Ministry|"
+    r"Inspectorate|Government)))"
+    r"\b(?:\s*,[^.;]{0,40},)?\s*$",
     re.I,
 )
 
@@ -93,14 +102,18 @@ AUTHORITY_SUBJECT = re.compile(
 # without imposing conduct: "The provisions of subsection (a) shall not apply
 # to", "shall be deemed", "the maximum amount of penalty ... shall be $5,000".
 CONSTRUCTION_SUBJECT = re.compile(
-    r"(?:\b(?:the provisions? of|any provision of|nothing in|the (?:maximum )?amount of (?:the )?penalty|the notice)\b"
-    r"[^.;]{0,80}|\bthis (?:subsection|section|paragraph|subparagraph)\s*)$",
+    r"(?:\b(?:the provisions? of|any provision of|nothing in|the (?:maximum )?amount of (?:the )?penalty)\b[^.;]{0,80}"
+    # "The term 'personal data' shall include ...", "References in this Act to ... shall be read as": only
+    # as the sentence's own subject, so "where the term of the agreement exceeds a year" stays a duty.
+    r"|(?:^|[.;:\n)]\s*)(?:\d+[.)]\s*)?(?:the (?:term|expression|word|phrase|definition of)\s+[\"'“‘]?[^.;,]{1,60}"
+    r"|references? (?:in this [a-z]+ )?to\b[^.;]{0,80})"
+    r"|\bthis (?:subsection|section|paragraph|subparagraph)\s*)$",
     re.I,
 )
 NON_DUTY_PREDICATE = re.compile(
     r"(?:must|shall|may)\s+(?:not\s+)?(?:apply\s+(?:to|only|in|with respect|where)|be deemed|be construed|be treated|"
     r"be considered|be subject to|"
-    r"include|mean|become final|have no authority|have jurisdiction|in anywise|"
+    r"mean|become final|have no authority|have jurisdiction|in anywise|"
     r"forfeit|be liable (?:for|to)|be fined|be imprisoned|be punished)\b",
     re.I,
 )
@@ -128,6 +141,9 @@ class Candidate:
     public: bool
     clause_id: int | None = None
     clause_text: str = ""
+    sentence: str = ""
+    own_text: str = ""
+    lead_clause: dict | None = None
 
 
 def _title_from(text: str, ref: str) -> str:
@@ -138,16 +154,38 @@ def _title_from(text: str, ref: str) -> str:
     return first or ref
 
 
+# "Article 5", "CHAPTER II", "§ 314.4", "Section 3." — the label, not the heading's words.
+_HEADING_MARKER = re.compile(
+    r"^\s*(?:part|title|chapter|book|annex|schedule|appendix|subpart|division|article|art\.|section|sec\.|§+|rule|"
+    r"clause|regulation)\s*(?:[0-9]+(?:\.[0-9]+)*[a-z]?(?:-[0-9]+)?|[ivxlcdm]+\b|[a-z]\b)?[.:]?\s*",
+    re.I)
+
+
+def heading_words(heading: str) -> str:
+    """A heading's own words: numbering labels removed, one line at a time."""
+    return " ".join(_HEADING_MARKER.sub("", line).strip() for line in (heading or "").split("\n"))
+
+
+def _leading_heading_line(text: str) -> str:
+    """A clause's first line when it is a heading ("(b) Proceeding by Commission"), else ""."""
+    body = text.strip()
+    if "\n" not in body:
+        return ""
+    first = body.split("\n", 1)[0].strip()
+    return first if len(first) <= 100 and not ANY_MODAL.search(first) else ""
+
+
 def not_a_duty(text: str, ref: str = "", heading: str = "") -> bool:
     """True for structure, enforcement procedure and construction: clauses whose
     first modal (strong or weak) governs an authority, a court, the reading of the
-    text or the penalty for a breach, rather than a regulated person's conduct."""
-    probe = f"{heading} {ref}"
-    # The heading line, not a cross-reference in the body ("section 80b-3a of this title").
-    first_line = text.strip().split("\n", 1)[0][:120]
-    if NON_DUTY_HEADINGS.search(probe) or NON_DUTY_HEADINGS.search(first_line):
-        return True
-    if PROCEDURAL_HEADINGS.search(heading) or PROCEDURAL_HEADINGS.search(first_line):
+    text or the penalty for a breach, rather than a regulated person's conduct.
+
+    Heading tests read headings only (the clause's own heading line, or the
+    heading of the unit it sits in) — never words in the body, so "to the
+    extent possible" or "the scope of processing" do not hide a duty.
+    """
+    probe = f"{heading_words(heading)} {heading_words(_leading_heading_line(text))}"
+    if NON_DUTY_HEADINGS.search(probe) or PROCEDURAL_HEADINGS.search(probe):
         return True
     if DEFINITION_OPENER.search(text[:240]):
         return True
@@ -211,6 +249,56 @@ def container_clause_ids(conn, source_version_id: int) -> set[int]:
     return containers
 
 
+def clause_contexts(conn, source_version_id: int) -> dict[int, dict]:
+    """Per clause: the heading of the unit it sits in, and a lead-in it continues.
+
+    A list item "(a) processed lawfully" completes its parent "Personal data
+    shall be:"; the duty is read from both. The heading is the nearest
+    ancestor heading ("Article 32 Security of processing").
+    """
+    from app.clhear.l1.models import doc_nodes
+
+    nodes = {r.id: r for r in conn.execute(
+        sa.select(doc_nodes.c.id, doc_nodes.c.parent_id, doc_nodes.c.heading, doc_nodes.c.raw_text)
+        .where(doc_nodes.c.source_version_id == source_version_id))}
+    rows = conn.execute(sa.select(clauses.c.id, clauses.c.doc_node_id, clauses.c.ref, clauses.c.text)
+                        .where(clauses.c.source_version_id == source_version_id)).all()
+    by_node = {r.doc_node_id: r for r in rows if r.doc_node_id is not None}
+    out: dict[int, dict] = {}
+    for row in rows:
+        node = nodes.get(row.doc_node_id)
+        if node is None:
+            continue
+        heading, lead, lead_clause, parent = "", "", None, nodes.get(node.parent_id)
+        if parent is not None and (parent.raw_text or "").rstrip().endswith((":", "—", "-")):
+            lead = " ".join(parent.raw_text.split())
+            owner = by_node.get(parent.id)
+            if owner is not None:
+                lead_clause = {"id": owner.id, "ref": owner.ref, "text": owner.text or ""}
+        cursor = parent
+        while cursor is not None and not heading:
+            heading = cursor.heading or ""
+            cursor = nodes.get(cursor.parent_id)
+        out[row.id] = {"heading": heading, "lead": lead, "lead_clause": lead_clause}
+    return out
+
+
+def duty_text(text: str, context: dict | None) -> str:
+    lead = (context or {}).get("lead") or ""
+    return f"{lead} {text}" if lead else text
+
+
+_ITEM_MARKER = re.compile(r"^\s*(?:\((?:[0-9]{1,3}[a-z]?|[a-z]{1,2}|[ivxlc]{1,6})\)|[a-z]\)|[-•*–])\s*", re.I)
+
+
+def sentence_text(text: str, context: dict | None) -> str:
+    """One readable sentence for a list item: "Personal data shall be processed lawfully ..."."""
+    lead = (context or {}).get("lead") or ""
+    if not lead:
+        return text
+    return f"{lead.rstrip(' :—-')} {_ITEM_MARKER.sub('', text.strip())}"
+
+
 def extract_source(engine: Engine, source_row, version_row) -> list[Candidate]:
     """Candidates for one in-force source version. Binding tier only; atomic
     (leaf) clauses only — see :func:`container_clause_ids`."""
@@ -223,14 +311,17 @@ def extract_source(engine: Engine, source_row, version_row) -> list[Candidate]:
             .order_by(clauses.c.ordering)
         ).all()
         containers = container_clause_ids(conn, version_row.id)
+        contexts = clause_contexts(conn, version_row.id)
     for row in rows:
-        text = row.text or ""
         if row.id in containers:
             continue
         if not open_source or not row.public_ok:
             # Restricted: we cannot inspect text; no machine derivation.
             continue
-        duty = detect_duty(text, row.ref or "", "")
+        context = contexts.get(row.id) or {}
+        own = row.text or ""
+        text = duty_text(own, context)
+        duty = detect_duty(text, row.ref or "", context.get("heading", ""))
         if duty is None:
             continue
         modality, confidence = duty
@@ -242,7 +333,7 @@ def extract_source(engine: Engine, source_row, version_row) -> list[Candidate]:
             Candidate(
                 source_key=source_row.key,
                 ref=row.ref or f"clause-{row.ordering}",
-                title=_title_from(text, row.ref or ""),
+                title=_title_from(own, row.ref or ""),
                 statement=statement,
                 addressee=(addressee_match.group(1).strip() if addressee_match else ""),
                 modality=modality,
@@ -251,9 +342,82 @@ def extract_source(engine: Engine, source_row, version_row) -> list[Candidate]:
                 public=True,
                 clause_id=row.id,
                 clause_text=text,
+                sentence=sentence_text(own, context),
+                own_text=own,
+                lead_clause=context.get("lead_clause"),
             )
         )
     return out
+
+
+def _evidence(cand: Candidate, structured: dict) -> dict:
+    """Quotes for the duty and each structured field (app.clhear.evidence)."""
+    from app.clhear import evidence
+    from app.clhear.l2 import registry
+
+    own = {"id": cand.clause_id, "source_key": cand.source_key, "ref": cand.ref, "text": cand.own_text}
+    found = [own]
+    lead = None
+    if cand.lead_clause:
+        lead_row = {**cand.lead_clause, "source_key": cand.source_key}
+        found.append(lead_row)
+        lead = evidence.whole(lead_row)
+    span = registry.duty_span(cand.own_text) if cand.own_text else None
+    if span is None and cand.own_text.strip():
+        duty = evidence.whole(own)
+    elif span is not None:
+        duty = {**evidence.whole(own), "start": span[0], "end": span[1], "quote": cand.own_text[span[0]:span[1]]}
+    else:
+        duty = None
+    return {"duty": duty, "lead": lead, **registry.structure_evidence(structured, found)}
+
+
+def _release_derived(conn, oid: str, trail: str) -> None:
+    """The duty's words changed: the measures and characteristics read from the old words are
+    closed, so L3 derives them again from the new ones."""
+    from app.clhear.derived_models import characteristics, requires
+
+    record.invalidate(conn, requires, sa.and_(requires.c.obligation_id == oid, requires.c.valid_to.is_(None)),
+                      why=trail, reason="the duty's words changed")
+    record.invalidate(conn, characteristics, sa.and_(characteristics.c.backing_obligation_id == oid,
+                                                     characteristics.c.valid_to.is_(None)),
+                      why=trail, reason="the duty's words changed")
+
+
+def _in_force_clauses(conn, keys: list[str]) -> dict[tuple[str, str], dict]:
+    """(source key, ref) -> the in-force clause with its lead-in, for the given sources."""
+    if not keys:
+        return {}
+    out: dict[tuple[str, str], dict] = {}
+    versions = conn.execute(
+        sa.select(source_versions.c.id, sources.c.key).join(sources, source_versions.c.source_id == sources.c.id)
+        .where(sources.c.key.in_(keys), source_versions.c.status == "in_force")).all()
+    for version_id, key in versions:
+        contexts = clause_contexts(conn, version_id)
+        for r in conn.execute(sa.select(clauses.c.id, clauses.c.ref, clauses.c.text, clauses.c.text_hash)
+                              .where(clauses.c.source_version_id == version_id)):
+            out[(key, r.ref)] = {"id": r.id, "text": r.text or "", "text_hash": r.text_hash,
+                                 "lead_clause": (contexts.get(r.id) or {}).get("lead_clause")}
+    return out
+
+
+def _keep_triaged(conn, row, clause: dict) -> None:
+    """A triaged duty whose clause is unchanged follows the in-force copy of that clause, and
+    gets its quotes if it was derived before quotes existed."""
+    from types import SimpleNamespace
+
+    from app.clhear.l2 import registry
+
+    registry.upsert_assert(conn, obligation_id=row.id, clause_id=clause["id"], source_key=row.source_key,
+                           clause_ref=row.clause_ref, text=clause["text"], text_hash=row.text_hash,
+                           strength="implied", why=row.why_trail_id or why_id(conn, row.id))
+    found = row.evidence if isinstance(row.evidence, dict) else {}
+    if found.get("duty") and found["duty"].get("clause_id") == clause["id"]:
+        return
+    fields = {k: getattr(row, k) or "" for k in ("subject", "action", "condition", "object", "obligation_type")}
+    fresh = _evidence(SimpleNamespace(clause_id=clause["id"], source_key=row.source_key, ref=row.clause_ref,
+                                      own_text=clause["text"], lead_clause=clause["lead_clause"]), fields)
+    conn.execute(obligations.update().where(obligations.c.id == row.id).values(evidence={**found, **fresh}))
 
 
 def obligation_id(source_key: str, ref: str) -> str:
@@ -349,8 +513,8 @@ def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
             l1_change = l1_latest.get(cand.source_key)
             effective = getattr(l1_change, "effective_date", None) or version_as_of.get(cand.source_key)
             effective_basis = getattr(l1_change, "effective_date_basis", "") or ("publisher" if effective else "none")
-            structured = registry.structured_fields(cand.clause_text or cand.statement, cand.modality)
-            values = dict(
+            structured = registry.structured_fields(cand.sentence or cand.clause_text or cand.statement, cand.modality)
+            values = dict(evidence=_evidence(cand, structured), 
                 source_key=cand.source_key,
                 clause_ref=cand.ref,
                 title=cand.title,
@@ -382,7 +546,7 @@ def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
                 if cand.clause_id is not None:
                     registry.upsert_assert(
                         conn, obligation_id=oid, clause_id=cand.clause_id, source_key=cand.source_key,
-                        clause_ref=cand.ref, text=cand.clause_text, text_hash=cand.text_hash,
+                        clause_ref=cand.ref, text=cand.own_text, text_hash=cand.text_hash,
                         strength="explicit", why=why_id(conn, oid),
                     )
                 registry.record_change(
@@ -394,8 +558,9 @@ def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
                     why=why_id(conn, oid),
                 )
                 inserted += 1
-            elif row.text_hash != cand.text_hash or row.method != EXTRACTOR_VERSION:
-                # Basis clause changed (or extractor upgraded): re-derive.
+            elif (duty_changed := (row.text_hash != cand.text_hash or (row.statement or "") != cand.statement
+                                   or (row.modality or "") != cand.modality)) or row.method != EXTRACTOR_VERSION:
+                # Basis clause (or the lead-in it continues) changed, or the extractor upgraded: re-derive.
                 why = registry.why_for(
                     oid, clause_id=cand.clause_id, text_hash=cand.text_hash, method=EXTRACTOR_VERSION,
                     confidence=cand.confidence,
@@ -411,10 +576,11 @@ def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
                 if cand.clause_id is not None:
                     registry.upsert_assert(
                         conn, obligation_id=oid, clause_id=cand.clause_id, source_key=cand.source_key,
-                        clause_ref=cand.ref, text=cand.clause_text, text_hash=cand.text_hash,
+                        clause_ref=cand.ref, text=cand.own_text, text_hash=cand.text_hash,
                         strength="explicit", why=trail,
                     )
-                if row.text_hash != cand.text_hash:
+                if duty_changed:
+                    _release_derived(conn, oid, trail)
                     registry.record_change(
                         conn, obligation_id=oid, kind="updated",
                         cause_clause_ids=[cand.clause_id] if cand.clause_id is not None else [],
@@ -428,8 +594,24 @@ def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
             else:
                 if not row.stable_id:
                     registry.ensure_stable_id(conn, oid)
+                # Same words, possibly a new L1 version: the edge and the quotes follow the in-force clause.
+                if cand.clause_id is not None:
+                    registry.upsert_assert(
+                        conn, obligation_id=oid, clause_id=cand.clause_id, source_key=cand.source_key,
+                        clause_ref=cand.ref, text=cand.own_text, text_hash=cand.text_hash,
+                        strength="explicit", why=row.why_trail_id or why_id(conn, oid),
+                    )
+                if row.evidence != values["evidence"]:
+                    conn.execute(obligations.update().where(obligations.c.id == oid).values(evidence=values["evidence"]))
                 unchanged += 1
+        in_force = _in_force_clauses(conn, scoped_keys)
         for oid, row in existing.items():
+            clause = in_force.get((row.source_key, row.clause_ref))
+            if (row.method or "") and not str(row.method).startswith("deterministic") and clause is not None \
+                    and clause["text_hash"] == row.text_hash:
+                # Found by triage and its own clause is still in force: not this extractor's to revoke.
+                _keep_triaged(conn, row, clause)
+                continue
             if oid not in seen and row.status != "stale":
                 l1_change = l1_latest.get(row.source_key)
                 effective = getattr(l1_change, "effective_date", None) or version_as_of.get(row.source_key)

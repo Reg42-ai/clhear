@@ -17,7 +17,6 @@ from sqlalchemy.engine import Connection
 
 from app.clhear.derived_models import (
     applies_to,
-    attribute_schema,
     channels,
     client_types,
     licences,
@@ -36,20 +35,5 @@ def upgrade(conn: Connection) -> None:
         table.create(conn, checkfirst=True)
         ensure_shared_columns(conn, table)
 
-    from app.clhear import curated
-
-    for item in curated.load("l4_attribute_schema"):
-        exists = conn.execute(sa.select(attribute_schema.c.key).where(attribute_schema.c.key == item["key"])).first()
-        if not exists:
-            conn.execute(attribute_schema.insert().values(
-                key=item["key"], type=item["type"], description=item.get("description", ""), read_by=item.get("read_by", [])))
-
-    from app.clhear.l4.ontology import build_ontology_in
-
-    build_ontology_in(conn, check_registers=False, publish=False)
-
-    from app.clhear.l1.scopes import active
-    from app.clhear.l4.validate import store_sample_profiles_in
-
-    if not active():  # a scoped corpus stores only tenant-submitted profiles
-        store_sample_profiles_in(conn)
+    # The retired reviewed catalog (attribute schema, finance ontology, sample
+    # profiles) is no longer seeded: a host's own sources define the questions.

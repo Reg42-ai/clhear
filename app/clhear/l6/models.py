@@ -31,9 +31,11 @@ EXPLANATION_RUBRIC = (
 )
 
 
-def fingerprint(attributes: dict, activities: list | None) -> str:
-    """One profile => one fingerprint: normalised attributes + activity filter."""
+def fingerprint(attributes: dict, activities: list | None, *, scope: list | None = None) -> str:
+    """One profile in one scope => one fingerprint: normalised attributes + activity filter + scope sources."""
     payload = {"attributes": _normalise(attributes or {}), "activities": sorted(activities) if activities else None}
+    if scope is not None:
+        payload["scope"] = sorted(scope)
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:32]
 
 
@@ -47,13 +49,15 @@ def _normalise(value):
     return value
 
 
+_NOT_HASHED = frozenset({"blueprint_id", "release", "composition_hash", "profile_id"})
+
+
 def composition_hash(composition: dict) -> str:
-    """Hash of the deterministic part of a composition (items + coverage)."""
-    payload = {
-        "items": [(i["block_id"], i["basis"], sorted(i["obligations_satisfied"])) for i in composition.get("items", [])],
-        "coverage": [(c["obligation_id"], c["state"], sorted(c.get("satisfied_by") or [])) for c in composition.get("coverage", [])],
-    }
-    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:32]
+    """Hash of the whole deterministic composition: items, coverage and its quotes, the duties
+    not applicable or undetermined, open questions and evidence gaps. A stored blueprint is
+    reused only when all of it is the same."""
+    payload = {k: v for k, v in composition.items() if k not in _NOT_HASHED}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:32]
 
 
 def vocabulary() -> dict:

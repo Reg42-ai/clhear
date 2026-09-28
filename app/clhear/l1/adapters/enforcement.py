@@ -17,7 +17,6 @@ the L2 extractor never derives obligations from a notice's prose.
 ``FcaFinalNoticesAdapter``    fca.org.uk final notices (licensed; derived facts published)
 ``SecEnforcementAdapter``     sec.gov litigation releases + administrative proceedings
                               (RSS; public domain)
-``FinraDisciplinaryAdapter``  finra.org disciplinary actions (derived-only rights)
 """
 from __future__ import annotations
 
@@ -33,7 +32,7 @@ from app.clhear.l1.adapters.base import DocNode
 from app.clhear.l1.adapters.official_html import _strip_chrome, _visible_strings
 from app.clhear.l1.adapters.publisher import NumberedHtmlAdapter, unique_ref
 
-__all__ = ["EnforcementListAdapter", "FcaFinalNoticesAdapter", "FinraDisciplinaryAdapter", "SecEnforcementAdapter"]
+__all__ = ["EnforcementListAdapter", "FcaFinalNoticesAdapter", "SecEnforcementAdapter"]
 
 _ITEM_TAGS = ("article", "li", "tr")
 _SLUG_JUNK = re.compile(r"[^A-Za-z0-9._-]+")
@@ -166,12 +165,3 @@ class SecEnforcementAdapter(EnforcementListAdapter):
     jurisdiction = "US"
     instrument = "SEC enforcement actions"
     headers = {"User-Agent": "CLHEAR by Reg42 (compliance@reg42.ai)"}
-
-
-class FinraDisciplinaryAdapter(EnforcementListAdapter):
-    key = "finra_enforcement"
-    publisher = "FINRA"
-    issuer = "FINRA"
-    jurisdiction = "US"
-    instrument = "FINRA disciplinary actions"
-    ITEM_SELECTOR = "tr, article, li"
