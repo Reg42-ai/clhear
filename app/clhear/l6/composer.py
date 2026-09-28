@@ -144,13 +144,14 @@ def _live_requires(conn) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {}
     try:
         rows = conn.execute(
-            sa.select(requires_t.c.obligation_id, requires_t.c.block_id, requires_t.c.rationale, requires_t.c.method)
+            sa.select(requires_t.c.id, requires_t.c.obligation_id, requires_t.c.block_id, requires_t.c.rationale,
+                      requires_t.c.method)
             .where(requires_t.c.valid_to.is_(None)).order_by(requires_t.c.id)
         ).all()
     except sa.exc.OperationalError:  # pre-m0011 database
         return out
-    for oid, bid, rationale, method in rows:
-        out.setdefault(oid, []).append({"block_id": bid, "rationale": rationale or "", "method": method or ""})
+    for rid, oid, bid, rationale, method in rows:
+        out.setdefault(oid, []).append({"id": rid, "block_id": bid, "rationale": rationale or "", "method": method or ""})
     return out
 
 
@@ -318,7 +319,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
               "triggers": item.get("triggers") or []}
         slot = triggered.setdefault(ob["id"], {"obligation": ob, "activities": [], "conditions": []})
         slot["activities"].append("L4:applies_to")
-        slot["conditions"].append({k: v for p in item["predicates"] for k, v in p["predicate"].items()})
+        slot["conditions"].extend(dict(p["predicate"]) for p in item["predicates"])
     for act in activity_rows if verdicts is None else ():
         if wanted_activities is not None and act["id"] not in wanted_activities:
             continue
@@ -352,7 +353,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
             and any(_selector_covers(sel, ob) for sel in b["satisfies"])]
         for edge in requires_edges.get(oid, ()):
             b = _canonical(blocks_by_id, blocks_by_id.get(edge["block_id"]))
-            if b is None or b["id"] in withheld:
+            if b is None or b["id"] in withheld or f"requires:{edge['id']}" in withheld:
                 continue
             required.setdefault(oid, []).append({**edge, "block_id": b["id"]})
             if b["id"] not in {c["id"] for c in cands}:

@@ -85,12 +85,14 @@ def condition_id(fact: str) -> str:
 
 def _quote_in(quotes: list[dict], part: str) -> list[dict]:
     """Narrow field quotes to the words of ``part`` (offsets stay into the clause)."""
+    from app.clhear.evidence import locate
+
     out = []
     for q in quotes or []:
-        at = q["quote"].lower().find(part.lower())
-        if at >= 0:
-            out.append({**q, "start": q["start"] + at, "end": q["start"] + at + len(part),
-                        "quote": q["quote"][at:at + len(part)]})
+        span = locate(q["quote"], part)  # tolerant of line breaks inside the clause
+        if span is not None:
+            out.append({**q, "start": q["start"] + span[0], "end": q["start"] + span[1],
+                        "quote": q["quote"][span[0]:span[1]]})
             break
     return out
 
@@ -106,17 +108,18 @@ def addressee_roles(ob: dict) -> tuple[list[dict], list[dict]]:
         return [], []
     quotes = ((ob.get("evidence") or {}).get("subject") or []) if isinstance(ob.get("evidence"), dict) else []
     roles, extra = [], []
-    for part in [p for p in _SPLIT_SUBJECT.split(subject) if p.strip()]:
-        head, rel = part, ""
-        found = _RELATIVE.search(part)
-        if found:
-            head, rel = part[:found.start()], found.group("rel")
-        head = _DETERMINERS.sub("", head).strip()
-        if rel:
-            fact = re.sub(r"^(?:who|that|which)\s+", "", rel, flags=re.I)
-            extra.append({"fact": fact, "text": rel, "expect": True, "quotes": _quote_in(quotes, rel)})
-        if not head or is_universal(head):
-            continue
+    # The relative clause first ("a firm that holds client money and deals on its own account"):
+    # its "and" / "or" belong to the condition, not to a list of roles.
+    heads = subject
+    found = _RELATIVE.search(subject)
+    if found:
+        heads, rel = subject[:found.start()], found.group("rel")
+        fact = re.sub(r"^(?:who|that|which)\s+", "", rel, flags=re.I)
+        extra.append({"fact": fact, "text": rel, "expect": True, "quotes": _quote_in(quotes, rel)})
+    for part in [p for p in _SPLIT_SUBJECT.split(heads) if p.strip()]:
+        head = _DETERMINERS.sub("", part).strip()
+        if not head or is_universal(head) or _CONNECTIVE.match(head) or _QUALIFIER.match(head):
+            continue  # a parenthetical ("where applicable"), not a noun phrase
         roles.append({"role": norm(head), "label": head, "quotes": _quote_in(quotes, head)})
     return roles, extra
 
@@ -267,17 +270,23 @@ def _source_jurisdictions(conn: Connection) -> dict[str, str]:
     return {r.key: (r.jurisdiction or "").strip().upper() for r in conn.execute(sa.select(sources.c.key, sources.c.jurisdiction))}
 
 
+def canonical_in(rows: list[dict]) -> list[dict]:
+    """Rows that stand for themselves in this set. A near-duplicate is folded into its
+    canonical only when that canonical is in the same set: a scope never loses a duty because
+    its twin lives in another scope."""
+    present = {r.get("stable_id") for r in rows} | {r["id"] for r in rows}
+    return [r for r in rows if not r.get("canonical_id") or r["canonical_id"] not in present]
+
+
 def _live_obligations(conn: Connection, source_key: str | None = None, limit: int | None = None) -> list[dict]:
     from app.clhear.l1.scopes import limiting
 
-    q = (sa.select(obligations).where(obligations.c.status.in_(LIVE_STATUS)).where(obligations.c.canonical_id.is_(None))
-         .order_by(obligations.c.id))
+    q = sa.select(obligations).where(obligations.c.status.in_(LIVE_STATUS)).order_by(obligations.c.id)
     limit_to = limiting(obligations.c.source_key, source_key)
     if limit_to is not None:
         q = q.where(limit_to)
-    if limit:
-        q = q.limit(limit)
-    return [dict(r) for r in conn.execute(q).mappings()]
+    rows = canonical_in([dict(r) for r in conn.execute(q).mappings()])
+    return rows[:limit] if limit else rows
 
 
 def extract_predicates(engine: Engine, llm=None, *, source_key: str | None = None, limit: int | None = None) -> dict:
@@ -361,12 +370,11 @@ def applicability(conn: Connection, attributes: dict, *, source_keys=None) -> di
     not_applicable (``failed`` says why) or undetermined (``open`` lists the
     unanswered questions). ``applies`` is kept as a boolean for callers."""
     edges = edges_by_obligation(conn)
-    query = (sa.select(obligations).where(obligations.c.status.in_(LIVE_STATUS))
-             .where(obligations.c.canonical_id.is_(None)))
+    query = sa.select(obligations).where(obligations.c.status.in_(LIVE_STATUS))
     if source_keys is not None:
         query = query.where(obligations.c.source_key.in_(list(source_keys)))
     out: dict[str, dict] = {}
-    for ob in conn.execute(query).mappings():
+    for ob in canonical_in([dict(r) for r in conn.execute(query).mappings()]):
         es = edges.get(ob["id"], [])
         verdict = judge(es, attributes)
         out[ob["id"]] = {"obligation": dict(ob), "edges": es, "applies": verdict["state"] == "applies", **verdict}
@@ -417,9 +425,9 @@ def questions(conn: Connection, source_keys) -> dict:
     keys = sorted(source_keys or [])
     declared = sorted({(r.jurisdiction or "").strip().upper() for r in conn.execute(
         sa.select(sources.c.jurisdiction).where(sources.c.key.in_(keys))) if (r.jurisdiction or "").strip()})
-    obs = {r["id"]: dict(r) for r in conn.execute(
+    obs = {r["id"]: r for r in canonical_in([dict(r) for r in conn.execute(
         sa.select(obligations).where(obligations.c.source_key.in_(keys))
-        .where(obligations.c.status.in_(LIVE_STATUS)).where(obligations.c.canonical_id.is_(None))).mappings()}
+        .where(obligations.c.status.in_(LIVE_STATUS))).mappings()])}
     roles: dict[str, dict] = {}
     conditions: dict[str, dict] = {}
     for oid, es in edges_by_obligation(conn).items():

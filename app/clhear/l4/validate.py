@@ -116,7 +116,7 @@ def check_answers(asked: dict, attributes: dict) -> list[dict]:
         if key not in roles:
             warnings.append({"code": "role_not_in_texts", "attribute": "roles", "value": key,
                              "message": f"No duty in scope is addressed to '{key}'", "known": sorted(roles)})
-    facts = {c["id"] for c in asked.get("conditions") or []} | {norm(c["fact"] or "") for c in asked.get("conditions") or []}
+    facts = {c["id"].upper() for c in asked.get("conditions") or []} | {norm(c["fact"] or "") for c in asked.get("conditions") or []}
     for key in _answers(attributes.get("conditions")):
         if key not in facts:
             warnings.append({"code": "condition_not_in_texts", "attribute": "conditions", "value": key,

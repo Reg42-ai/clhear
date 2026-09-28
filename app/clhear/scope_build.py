@@ -131,9 +131,14 @@ def derive_l2(engine: Engine, llm) -> dict:
 
     # One source at a time: an unscoped extraction stales every obligation it
     # did not just derive, including rows that belong to other sources.
+    from app.clhear import evidence
+
     chosen = scopes.source_keys()
     extraction = [run_extraction(engine, source_key=key) for key in chosen] if chosen else run_extraction(engine)
-    return {"extraction": extraction, "triage": triage_duties(engine, llm),
+    with engine.begin() as conn:
+        # A new L1 version gives unchanged clauses new ids: quotes of the same words follow them.
+        reanchored = evidence.reanchor(conn)
+    return {"extraction": extraction, "reanchored": reanchored, "triage": triage_duties(engine, llm),
             "structured": refine_structured(engine, llm), "consolidation": draft_and_propose(engine, llm),
             "dedupe": consolidate(engine), "review": review_obligations(engine, llm)}
 
@@ -326,11 +331,16 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
 
         held["lineage"] = lineage.verify(engine, scope.get("sources") or [])
         kinds = _kinds_in_scope(engine)
-        # L7 and L8 run after the blueprint: record now what they will lack, so the blueprint says so.
+        # L7 and L8 run after the blueprint: record now what they will lack, and clear what they no
+        # longer lack, so the blueprint says so.
         if "enforcement" not in kinds:
             _not_built(engine, "L7", "no_enforcement_sources", "an enforcement source (kind 'enforcement')")
+        else:
+            _clear_gaps(engine, "L7")
         if "guidance" not in kinds:
             _not_built(engine, "L8", "no_reference_sources", "a guidance or reference source (kind 'guidance')")
+        else:
+            _clear_gaps(engine, "L8")
         detail = derive_l6(engine, llm, held["profiles"], withheld=held["lineage"]["withheld"])
         held["compositions"] = detail.get("compositions") or {}
         return {k: v for k, v in detail.items() if k != "compositions"} | {"blueprints": sorted(

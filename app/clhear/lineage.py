@@ -125,7 +125,7 @@ def verify(engine: Engine, source_keys) -> dict:
             quotes = _quotes(found)
             reason = "no quoted duty" if not quotes else c.quotes_hold(quotes)
             if not c.judge("requires", r["id"], reason):
-                withheld.add(r["block_id"])
+                withheld.add(f"requires:{r['id']}")  # this link only: other duties may rightly need the block
             block_ids.add(r["block_id"])
         for b in conn.execute(sa.select(blocks).where(blocks.c.id.in_(block_ids))).mappings():
             found = _json(b.get("evidence"), {})

@@ -79,11 +79,13 @@ def live_activities(conn: Connection) -> list[dict]:
 def _live_obligations(conn: Connection, source_key: str | None = None) -> list[dict]:
     from app.clhear.l1.scopes import limiting
 
-    q = sa.select(obligations).where(obligations.c.status.in_(LIVE)).where(obligations.c.canonical_id.is_(None))
+    from app.clhear.l4.predicates import canonical_in
+
+    q = sa.select(obligations).where(obligations.c.status.in_(LIVE))
     limit = limiting(obligations.c.source_key, source_key)
     if limit is not None:
         q = q.where(limit)
-    return [dict(r) for r in conn.execute(q.order_by(obligations.c.stable_id, obligations.c.id)).mappings()]
+    return canonical_in([dict(r) for r in conn.execute(q.order_by(obligations.c.stable_id, obligations.c.id)).mappings()])
 
 
 def _live_edges(conn: Connection, table: sa.Table) -> list[dict]:
@@ -145,13 +147,23 @@ def read_activity(ob: dict, clauses: list[dict]) -> dict | None:
     """The activity a duty describes: its quoted action and, when the text names
     one, its quoted operator. None when the duty states no action."""
     action = ob.get("action") or ""
-    if not action or action.lower().startswith(("be ", "been ")):
+    subject = " ".join((ob.get("subject") or "").split())
+    if action.lower().startswith(("be ", "been ")):
+        # Passive: what must be done to the subject; who does it is not stated.
+        phrase = measure_phrase(action.split(" ", 1)[1] if " " in action else "")
+        parts = [p for p in (subject, phrase) if p]
+        quotes = [q for p in parts for q in (field_quotes(p, clauses) or [])] if phrase else []
+        if not phrase or len(quotes) < len(parts):
+            return None
+        name = f"{subject[0].upper()}{subject[1:]}: {phrase}" if subject else phrase[0].upper() + phrase[1:]
+        return {"name": name[:160], "operator": "", "action_type": phrase.split()[0].lower(),
+                "evidence": {"name": quotes, "operator": []}}
+    if not action:
         return None
     phrase = measure_phrase(action)
     quotes = field_quotes(phrase, clauses) if phrase else None
     if not quotes:
         return None
-    subject = " ".join((ob.get("subject") or "").split())
     operator = "" if (not subject or subject.lower() in PRONOUNS or is_universal(subject)
                       or not binds_subject(ob)) else subject
     operator_quotes = (field_quotes(operator, clauses) or []) if operator else []
@@ -166,6 +178,10 @@ def _find_or_create(conn: Connection, acts: list[dict], reading: dict, why: str)
     name, owner = reading["name"], reading["operator"]
     for a in acts:
         if a["name"].strip().lower() == name.lower() and (a.get("business_owner") or "").lower() == owner.lower():
+            if _json(a.get("evidence"), {}) != reading["evidence"]:  # quote the duty as it now reads
+                conn.execute(activities_t.update().where(activities_t.c.id == a["id"]).values(
+                    evidence=reading["evidence"], why_trail_id=why))
+                a["evidence"] = reading["evidence"]
             return a
     aid = next_id(conn, "ACT")
     row = {"id": aid, "name": name[:160], "description": "", "business_owner": owner[:80], "triggers": [],
@@ -189,19 +205,25 @@ def _add_trigger(conn: Connection, act: dict, ob: dict, why: str) -> bool:
     return True
 
 
-def _operate(conn: Connection, act: dict, block_id: str, ob: dict, live: dict, why: str, today) -> str:
-    duty = ((ob.get("evidence") or {}).get("duty") if isinstance(ob.get("evidence"), dict) else None)
+def _duty_quote(ob: dict | None) -> dict | None:
+    found = (ob or {}).get("evidence")
+    return found.get("duty") if isinstance(found, dict) else None
+
+
+def _operate(conn: Connection, act: dict, block_id: str, ob: dict, live: dict, why: str, today,
+             live_obs: dict[str, dict]) -> str:
+    duty = _duty_quote(ob)
     existing = live.get((act["id"], block_id))
     if existing is not None:
-        refs = sorted(set(existing["obligation_refs"]) | {_ref(ob)})
-        if refs == existing["obligation_refs"]:
+        # Only duties still in force, each quoted as it now reads.
+        refs = sorted({r for r in existing["obligation_refs"] if r in live_obs} | {_ref(ob)})
+        wanted = {"duty": [q for q in (_duty_quote(live_obs.get(r)) for r in refs) if q],
+                  "activity": act.get("evidence") or {}}
+        if refs == existing["obligation_refs"] and _json(existing.get("evidence"), {}) == wanted:
             return "unchanged"
-        found = _json(existing.get("evidence"), {}) or {}
-        duties = [*(found.get("duty") or []), *([duty] if duty else [])]
         conn.execute(operates.update().where(operates.c.id == existing["id"]).values(
-            obligation_refs=refs, evidence={**found, "duty": duties}, version=(existing.get("version") or 1) + 1,
-            why_trail_id=why))
-        existing["obligation_refs"], existing["evidence"] = refs, {**found, "duty": duties}
+            obligation_refs=refs, evidence=wanted, version=(existing.get("version") or 1) + 1, why_trail_id=why))
+        existing["obligation_refs"], existing["evidence"] = refs, wanted
         return "changed"
     rid = next_id(conn, "OPR")
     values = {"id": rid, "activity_id": act["id"], "block_id": block_id, "obligation_refs": [_ref(ob)],
@@ -210,6 +232,29 @@ def _operate(conn: Connection, act: dict, block_id: str, ob: dict, live: dict, w
     record.write(conn, operates, values, why=why, valid_from=today)
     live[(act["id"], block_id)] = {**values, "version": 1}
     return "added"
+
+
+def _reconcile(conn: Connection, live_opr: dict, live_obs: dict[str, dict], req: dict[str, list[str]],
+               blocks_by_id: dict[str, dict], why: str) -> int:
+    """Every operates edge keeps only duties that are live and still require its block, each
+    quoted as it now reads; an edge left with none is closed."""
+    closed = 0
+    for e in list(live_opr.values()):
+        refs = sorted(r for r in e["obligation_refs"] if r in live_obs
+                      and e["block_id"] in {_canonical(blocks_by_id, b) for b in req.get(live_obs[r]["id"], [])})
+        if not refs:
+            record.invalidate(conn, operates, operates.c.id == e["id"], why=why,
+                              reason="no live duty requires this measure any more")
+            live_opr.pop((e["activity_id"], e["block_id"]), None)
+            closed += 1
+            continue
+        found = _json(e.get("evidence"), {}) or {}
+        wanted = {**found, "duty": [q for q in (_duty_quote(live_obs[r]) for r in refs) if q]}
+        if refs != e["obligation_refs"] or found != wanted:
+            conn.execute(operates.update().where(operates.c.id == e["id"]).values(
+                obligation_refs=refs, evidence=wanted, version=(e.get("version") or 1) + 1, why_trail_id=why))
+            e["obligation_refs"], e["evidence"] = refs, wanted
+    return closed
 
 
 # ----------------------------------------------------------------- the mapper
@@ -228,6 +273,8 @@ def map_activities(engine: Engine, llm=None, *, source_key: str | None = None) -
         req = _requires_by_obligation(conn)
         blocks_by_id = _live_blocks(conn)
         live_opr = {(e["activity_id"], e["block_id"]): e for e in _live_edges(conn, operates)}
+        every = [dict(r) for r in conn.execute(sa.select(obligations).where(obligations.c.status.in_(LIVE))).mappings()]
+        live_obs = {_ref(o): o for o in every}
         obs = [o for o in _live_obligations(conn, source_key) if req.get(o["id"])]
         trail = _why("l5.map", f"activities read from the words of {len(obs)} duties",
                      [{"layer": "L2", "table": "obligations", "id": o["id"]} for o in obs[:50]]).write(conn)
@@ -236,6 +283,9 @@ def map_activities(engine: Engine, llm=None, *, source_key: str | None = None) -
             reading = read_activity(ob, obligation_clauses(conn, ob))
             if reading is None:
                 counts["no_action"] += 1
+                evidence.record_gap(conn, scope=scope, layer="L5", kind="operator_not_stated", subject=ob["id"],
+                                    source_key=ob["source_key"], clause_ref=ob["clause_ref"],
+                                    missing="an action and who carries it out")
                 continue
             if not reading["operator"]:
                 counts["no_operator"] += 1
@@ -247,9 +297,11 @@ def map_activities(engine: Engine, llm=None, *, source_key: str | None = None) -
             counts["activities_created"] += len(acts) - before
             _add_trigger(conn, act, ob, trail)
             for bid in sorted({_canonical(blocks_by_id, b) for b in req[ob["id"]]}):
-                counts["operates"][_operate(conn, act, bid, ob, live_opr, trail, today)] += 1
+                counts["operates"][_operate(conn, act, bid, ob, live_opr, trail, today, live_obs)] += 1
             counts["mapped"] += 1
-        if counts["activities_created"] or counts["operates"]["added"] or counts["operates"]["changed"]:
+        counts["operates"]["closed"] = _reconcile(conn, live_opr, live_obs, req, blocks_by_id, trail)
+        if (counts["activities_created"] or counts["operates"]["added"] or counts["operates"]["changed"]
+                or counts["operates"]["closed"]):
             publish_layer_event(conn, layer="L5", event="changed", subject_ref="l5.map",
                                 payload={"counts": counts, "why_trail_id": trail}, producer=AGENT)
     log.info("L5 map: %s", counts)

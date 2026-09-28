@@ -198,3 +198,24 @@ def test_the_engine_carries_no_sector_vocabulary():
     import app.clhear.curated as curated
 
     assert not hasattr(curated, "seed") and not hasattr(curated, "seed_concepts")
+
+
+def test_a_licence_from_a_source_without_jurisdiction_is_kept(live, monkeypatch):  # noqa: F811
+    from . import scripted_model, test_live_run
+
+    def licensing(prompt, system=None, model=None):
+        if (system or "").startswith("Extractive only"):
+            return json.dumps({"license_types": [{"name": "valid operator certificate", "issuing_regime": "",
+                                                  "source_key": "safety", "ref": "rule-6"}]})
+        return scripted_model.respond(prompt, system, model)
+
+    monkeypatch.setattr(test_live_run, "respond", licensing)
+    client, _ = live
+    client.post("/v1/sources", json={"key": "safety", "adapter": "local_text", "locator": {"text": SAFETY}})
+    client.post("/v1/scopes", json={"name": "safety", "sources": ["safety"]})
+    client.put("/v1/profiles/co", json={"attributes": CASES["safety"]["answers"]})
+    release = _run(client, "safety", ["co"])
+    licences = client.get("/v1/profile-schema", params={"scope": "safety"}).json()["questions"]["licences"]
+    assert [lic["name"] for lic in licences] == ["valid operator certificate"]
+    gaps = {g["kind"] for g in client.get(f"/v1/releases/{release}/blueprints/co").json()["evidence_gaps"]}
+    assert "no_licence_types" not in gaps

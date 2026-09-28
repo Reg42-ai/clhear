@@ -10,7 +10,10 @@
   licence / product / client / channel ontology, validity rules, sample
   profiles, starter concepts) are removed, and applicability edges written in
   the retired attribute vocabulary are closed, so the next build derives them
-  again from the texts in scope.
+  again from the texts in scope;
+* measures, requires edges, characteristics, activities and operates edges
+  derived before quotes existed are closed (never deleted), so the next build
+  derives them again with quotes. The offline sample's rows are left alone.
 """
 from datetime import datetime, timezone
 
@@ -117,6 +120,19 @@ def _remove_seeded(conn: Connection) -> None:
         conn.execute(applies_to.update().where(applies_to.c.valid_to.is_(None)).values(valid_to=today))
 
 
+def _close_unquoted(conn: Connection) -> None:
+    """Rows derived before 0.2 carry no quotes: close them so the next build derives them again."""
+    today = datetime.now(timezone.utc).date()
+    for table, keep in ((requires, requires.c.method == "offline-sample"),
+                        (characteristics, characteristics.c.method == "offline-sample"),
+                        (operates, operates.c.activity_id.like("ACT-DECLARED%")),
+                        (blocks, blocks.c.id.like("BLK-DECLARED%")),
+                        (activities, activities.c.id.like("ACT-DECLARED%"))):
+        if _has(conn, table):
+            conn.execute(table.update().where(table.c.valid_to.is_(None), table.c.evidence.is_(None),
+                                              sa.not_(keep)).values(valid_to=today))
+
+
 def upgrade(conn: Connection) -> None:
     for table in _WITH_EVIDENCE:
         _add_evidence(conn, table)
@@ -124,3 +140,4 @@ def upgrade(conn: Connection) -> None:
     if _has(conn, blocks):
         _allow_unspecified_kind(conn)
     _remove_seeded(conn)
+    _close_unquoted(conn)

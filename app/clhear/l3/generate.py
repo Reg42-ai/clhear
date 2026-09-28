@@ -66,7 +66,7 @@ def _clusters(engine: Engine) -> list[list[dict]]:
 
 def _existing_blocks(engine: Engine) -> list[dict]:
     with engine.connect() as conn:
-        return [dict(r) for r in conn.execute(sa.select(blocks_t)).mappings()]
+        return [dict(r) for r in conn.execute(sa.select(blocks_t).where(blocks_t.c.valid_to.is_(None))).mappings()]
 
 
 def _duplicate_of(name: str, existing: list[dict]) -> str | None:
@@ -102,15 +102,17 @@ def _kind(parsed: dict, name: str, clauses: list[dict], cited: list[dict], read:
         found = evidence.quote_first(clauses, quote)
         if found is not None:
             return kind, [found]
-    kind, word = kind_from_words("", name)
-    found = evidence.quote_first(clauses, word) if word else None
-    if found is not None:
-        return kind, [found]
+    # The cited duties' own words, when they agree, before the name's nouns: a name that is a
+    # verb phrase ("Notify the management body") takes its kind from the duty, not its object.
     proposals = [propose_block(o, read[o["id"]]) for o in cited]
     kinds = {p["kind"] for p in proposals if p}
     if len(kinds) == 1 and all(proposals) and "Unspecified" not in kinds:
         return kinds.pop(), [q for p in proposals for q in p["evidence"]["kind"]]
-    return "Unspecified", []
+    verbs = {(o.get("obligation_type") or "").removeprefix("not ").split(" ")[0] for o in cited}
+    first, _, rest = name.partition(" ")
+    kind, word = kind_from_words(first, rest) if first.lower() in verbs else kind_from_words("", name)
+    found = evidence.quote_first(clauses, word) if word else None
+    return (kind, [found]) if found is not None and kind != "Unspecified" else ("Unspecified", [])
 
 
 def _accept(engine: Engine, proposal: dict, cluster: list[dict], taken: set[str], existing: list[dict],
@@ -151,6 +153,12 @@ def _accept(engine: Engine, proposal: dict, cluster: list[dict], taken: set[str]
         return f"reused:{duplicate}"
     kind, kind_quotes = _kind(proposal, name, clauses, cited, read)
     bid = f"BLK-AI-{_slug(name)}"
+    with engine.connect() as conn:
+        taken_ids = {r[0] for r in conn.execute(sa.select(blocks_t.c.id).where(blocks_t.c.id.like(f"{bid}%")))}
+    suffix = 2
+    while bid in taken_ids:  # same slug, different measure (_duplicate_of did not match): a new id
+        bid = f"BLK-AI-{_slug(name)}-{suffix}"
+        suffix += 1
     duties = [(o.get("evidence") or {}).get("duty") for o in cited if isinstance(o.get("evidence"), dict)]
     values = dict(
         name=name, kind=kind, purpose=next((d["quote"] for d in duties if d), "")[:400], description="",

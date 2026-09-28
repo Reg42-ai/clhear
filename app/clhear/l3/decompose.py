@@ -36,9 +36,10 @@ AGENT = "l3.decompose"
 LIVE = ("derived", "validated")
 NAME_MATCH = 0.75  # content-word Jaccard for reusing an existing block of the same kind
 
+# Function words only: "not" and "no" are kept, so a prohibition never matches the act it forbids.
 _STOP = frozenset({"the", "a", "an", "of", "to", "and", "or", "in", "on", "for", "by", "with", "that", "which",
-                   "its", "their", "such", "any", "all", "as", "at", "be", "is", "are", "must", "shall", "firm",
-                   "firms", "person", "institution", "entity", "it", "this", "these", "those", "not", "no"})
+                   "its", "their", "such", "any", "all", "as", "at", "be", "is", "are", "must", "shall", "it",
+                   "this", "these", "those"})
 _WORD = re.compile(r"[a-z0-9]+")
 
 # Where a measure's name stops: the thing to do or have has been named; what
@@ -55,11 +56,27 @@ _DETERMINER = re.compile(r"^(?:(?:a|an|the|its|their|his|her|all|any|each|every|
 MAX_NAME_WORDS = 12
 
 
+# "establish and maintain", "establish, implement and maintain": one action with several verbs.
+_VERB_GROUP = re.compile(r"^(\w+(?:,\s*\w+)*,?\s+(?:and|or|and/or)\s+\w+)(?:\s+(.*))?$", re.I | re.S)
+
+
+def split_verb(phrase: str) -> tuple[str, str]:
+    """(verb or coordinated verb group, the rest)."""
+    group = _VERB_GROUP.match(phrase)
+    if group:
+        return group.group(1), group.group(2) or ""
+    verb, _, rest = phrase.partition(" ")
+    return verb, rest
+
+
 def measure_phrase(action: str) -> str:
     """The action up to where its condition, timing or purpose begins."""
     phrase = _CUT.sub("", " ".join((action or "").split()))
-    phrase = _SECOND_ACTION.sub("", phrase).strip(" ,;:.")
-    return " ".join(phrase.split()[:MAX_NAME_WORDS])
+    verb, rest = split_verb(phrase)
+    second = _SECOND_ACTION.search(f" {rest}") if rest else None
+    if second:  # a second action with its own verb and object starts the next measure
+        phrase = f"{verb} {f' {rest}'[:second.start()].strip()}".strip()
+    return " ".join(phrase.strip(" ,;:.").split()[:MAX_NAME_WORDS])
 
 
 def _content(text: str) -> set[str]:
@@ -85,13 +102,16 @@ def propose_block(obligation: dict, clauses: list[dict]) -> dict | None:
     phrase = measure_phrase(action.split(" ", 1)[1] if passive and " " in action else action)
     if not phrase:
         return None
+    if (obligation.get("modality") in ("must-not", "prohibited")
+            or (obligation.get("obligation_type") or "").startswith("not ")):
+        return _prohibition(obligation, phrase, subject, passive, clauses)
     if passive:
         if not subject:
             return None
         parts, kind, kind_word = [subject, phrase], *kind_from_words("", subject)
         name = f"{subject[0].upper()}{subject[1:]}: {phrase}"
     else:
-        verb, _, rest = phrase.partition(" ")
+        verb, rest = split_verb(phrase)
         obj = _DETERMINER.sub("", rest).strip()
         kind, kind_word = kind_from_words(verb, obj)
         if kind == "Unspecified":
@@ -108,6 +128,40 @@ def propose_block(obligation: dict, clauses: list[dict]) -> dict | None:
     duty = (obligation.get("evidence") or {}).get("duty") if isinstance(obligation.get("evidence"), dict) else None
     return {"kind": kind, "name": name[:160], "purpose": (duty or {}).get("quote") or phrase,
             "evidence": {"name": quotes, "kind": kind_quote or []}}
+
+
+_NEGATIVE = re.compile(r"\b(?:must not|shall not|may not|should not|is not permitted to|are not permitted to|"
+                       r"is prohibited from|are prohibited from|no \w+(?: \w+)? (?:may|shall|must))\b", re.I)
+
+
+def _prohibition(obligation: dict, phrase: str, subject: str, passive: bool, clauses: list[dict]) -> dict | None:
+    """A prohibition's measure keeps its negation, in the clause's words: "must not disclose ..."
+    or "Personal data: shall not be transferred ...". None when the words cannot be quoted."""
+    duty = (obligation.get("evidence") or {}).get("duty") if isinstance(obligation.get("evidence"), dict) else None
+    for clause in clauses:
+        found = _NEGATIVE.search(clause["text"])
+        if found is None:
+            continue
+        tail = clause["text"][found.end():]
+        words = phrase.split()
+        at = evidence.locate(tail, " ".join(words[:2]) if len(words) > 1 else phrase)
+        if at is None:
+            continue
+        stop = evidence.locate(tail, phrase)
+        span_end = found.end() + (stop[1] if stop else at[1])
+        quoted = {**evidence.whole(clause), "start": found.start(), "end": span_end,
+                  "quote": clause["text"][found.start():span_end]}
+        name = " ".join(quoted["quote"].split())
+        if passive and subject:
+            subject_quotes = field_quotes(subject, clauses)
+            if not subject_quotes:
+                return None
+            return {"kind": "Unspecified", "name": f"{subject[0].upper()}{subject[1:]}: {name}"[:160],
+                    "purpose": (duty or {}).get("quote") or name,
+                    "evidence": {"name": subject_quotes + [quoted], "kind": []}}
+        return {"kind": "Process", "name": (name[0].upper() + name[1:])[:160], "purpose": (duty or {}).get("quote") or name,
+                "evidence": {"name": [quoted], "kind": [quoted]}}
+    return None
 
 
 def duty_sentence(text: str) -> str:
@@ -132,7 +186,7 @@ def why_for(subject_ref: str, *, method: str, confidence: float | None, summary:
 
 
 def _canonical_blocks(conn: Connection, kind: str | None = None) -> list[dict]:
-    q = sa.select(blocks).where(blocks.c.canonical_id.is_(None))
+    q = sa.select(blocks).where(blocks.c.canonical_id.is_(None)).where(blocks.c.valid_to.is_(None))
     if kind:
         q = q.where(blocks.c.kind == kind)
     return [dict(r) for r in conn.execute(q).mappings()]

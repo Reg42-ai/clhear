@@ -45,6 +45,10 @@ def locate(text: str, needle: str, start: int = 0) -> tuple[int, int] | None:
     if not text or not needle or not needle.strip():
         return None
     needle = needle.strip()
+    if re.fullmatch(r"\w+", needle):
+        # A single word is the word, not part of another ("person" is not in "personal").
+        m = re.search(rf"\b{re.escape(needle)}\b", text[start:]) or re.search(rf"(?i)\b{re.escape(needle)}\b", text[start:])
+        return (start + m.start(), start + m.end()) if m else None
     at = text.find(needle, start)
     if at >= 0:
         return at, at + len(needle)
@@ -104,9 +108,15 @@ def words(text: str) -> list[str]:
 
 
 def _stem(word: str) -> str:
-    for suffix in ("ies", "es", "s"):
-        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
-            return word[: -len(suffix)] + ("y" if suffix == "ies" else "")
+    """Singular and plural fold to one form: procedure(s), service(s), process(es), polic(y|ies)."""
+    if word.endswith("ies") and len(word) > 4:
+        word = word[:-3] + "y"
+    elif word.endswith("sses"):
+        word = word[:-2]
+    elif word.endswith("s") and not word.endswith("ss") and len(word) > 3:
+        word = word[:-1]
+    if word.endswith("e") and len(word) > 4:
+        word = word[:-1]
     return word
 
 
@@ -160,6 +170,92 @@ def check(item: dict, clauses_by_id: dict[int, dict]) -> str | None:
     if clause["text"][start:end] != item.get("quote"):
         return "quote differs from the clause text"
     return None
+
+
+def reanchor(conn: Connection) -> dict:
+    """Point quotes at the in-force copy of their clause.
+
+    When L1 stores a new version of a source, every clause gets a new row, and a
+    clause whose text did not change is the same words under a new id. Each
+    quote that names a clause no longer in force is moved to the in-force
+    clause of the same source, reference and text hash; its offsets and words
+    stay valid because the text is identical. Quotes whose clause changed or
+    disappeared are left alone: lineage reports them and the layer re-derives."""
+    from app.clhear.derived_models import (
+        activities,
+        applies_to,
+        blocks,
+        characteristics,
+        license_types,
+        obligations,
+        operates,
+        requires,
+    )
+    from app.clhear.l1.models import clauses, source_versions, sources
+
+    tables = (obligations, requires, blocks, characteristics, applies_to, activities, operates, license_types)
+    rows = []
+    referenced: set[int] = set()
+    for table in tables:
+        for r in conn.execute(sa.select(table.c[_pk(table)], table.c.evidence).where(table.c.evidence.isnot(None))):
+            found = r.evidence if not isinstance(r.evidence, str) else _loads(r.evidence)
+            ids = {q.get("clause_id") for q in _all_quotes(found)}
+            if ids:
+                rows.append((table, r[0], found, ids))
+                referenced |= {i for i in ids if isinstance(i, int)}
+    stale = {cid: c for cid, c in clause_rows(conn, referenced).items() if not c["in_force"]}
+    if not stale:
+        return {"moved": 0, "rows": 0}
+    live = {}
+    for r in conn.execute(
+            sa.select(clauses.c.id, clauses.c.ref, clauses.c.text_hash, sources.c.key)
+            .join(source_versions, clauses.c.source_version_id == source_versions.c.id)
+            .join(sources, source_versions.c.source_id == sources.c.id)
+            .where(source_versions.c.status == "in_force")
+            .where(sources.c.key.in_(sorted({c["source_key"] for c in stale.values()})))):
+        live[(r.key, r.ref, r.text_hash)] = r.id
+    moved = {cid: live[(c["source_key"], c["ref"], c["text_hash"])] for cid, c in stale.items()
+             if (c["source_key"], c["ref"], c["text_hash"]) in live}
+    changed = 0
+    for table, key, found, ids in rows:
+        if not ids & set(moved):
+            continue
+        conn.execute(table.update().where(table.c[_pk(table)] == key).values(evidence=_moved(found, moved)))
+        changed += 1
+    return {"moved": len(moved), "rows": changed}
+
+
+def _pk(table) -> str:
+    return next(c.name for c in table.primary_key.columns)
+
+
+def _loads(value):
+    import json
+
+    try:
+        return json.loads(value)
+    except ValueError:
+        return {}
+
+
+def _all_quotes(found) -> list[dict]:
+    if is_quote(found):
+        return [found]
+    if isinstance(found, dict):
+        return [q for v in found.values() for q in _all_quotes(v)]
+    if isinstance(found, list):
+        return [q for v in found for q in _all_quotes(v)]
+    return []
+
+
+def _moved(found, moved: dict):
+    if is_quote(found):
+        return {**found, "clause_id": moved.get(found.get("clause_id"), found.get("clause_id"))}
+    if isinstance(found, dict):
+        return {k: _moved(v, moved) for k, v in found.items()}
+    if isinstance(found, list):
+        return [_moved(v, moved) for v in found]
+    return found
 
 
 # ----------------------------------------------------------------- evidence gaps

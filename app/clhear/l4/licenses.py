@@ -159,7 +159,8 @@ def retire_unsound(engine: Engine, jurisdiction_of: dict[str, str] | None = None
             # A licence quoted from outside the active scope is not this build's to retire.
             if chosen is not None and (not anchor_keys or not anchor_keys <= chosen):
                 continue
-            anchored = {jurisdiction_of.get(a.get("source_key"), "") for a in anchors}
+            # A source with no declared jurisdiction gives its licence types the jurisdiction "*".
+            anchored = {jurisdiction_of.get(a.get("source_key"), "") or "*" for a in anchors}
             if not names_a_licence(row["name"]):
                 reason = f"'{row['name']}' does not name a licence: retired"
             elif anchored and row["jurisdiction"].upper() not in anchored:

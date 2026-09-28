@@ -91,9 +91,11 @@ def extract_value(kind: str, key: str, ob: dict) -> str:
     if key == "cadence":
         return _first(_CADENCE, full)
     if key in ("performing_role", "owner"):
-        from app.clhear.l2.registry import is_universal
+        from app.clhear.l2.registry import binds_subject, is_universal
 
-        return subject if subject and not is_universal(subject) and subject.lower() in full.lower() else ""
+        # Only an addressee the duty binds can own or perform it, not the document a content duty describes.
+        return subject if (subject and binds_subject(ob) and not is_universal(subject)
+                           and subject.lower() in full.lower()) else ""
     if key == "approver":
         return _first(_APPROVER, full, 1)
     if key == "trigger":

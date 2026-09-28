@@ -64,16 +64,14 @@ def _facts(conditions: list[dict], attributes: dict) -> list[str]:
     out: list[str] = []
     for cond in conditions:
         cond = cond or {}
+        found = []
         if "jurisdictions" in cond:
-            fact = f"operates in {cond['jurisdictions']}"
-        elif "roles" in cond:
-            fact = "is " + " or ".join(f"'{r}'" for r in cond["roles"])
-        elif "condition" in cond:
-            fact = f"'{cond.get('fact')}' is {'true' if cond.get('expect', True) else 'false'}"
-        else:
-            continue
-        if fact not in out:
-            out.append(fact)
+            found.append(f"operates in {cond['jurisdictions']}")
+        if "roles" in cond:
+            found.append("is " + " or ".join(f"'{r}'" for r in cond["roles"]))
+        if "condition" in cond:
+            found.append(f"'{cond.get('fact')}' is {'true' if cond.get('expect', True) else 'false'}")
+        out.extend(f for f in found if f not in out)
     return out
 
 

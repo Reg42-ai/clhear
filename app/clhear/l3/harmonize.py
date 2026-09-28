@@ -54,7 +54,8 @@ def blocks_in_scope(conn) -> set[str] | None:
             .where(requires.c.valid_to.is_(None))):
         linked.setdefault(bid, set()).add(source_key)
     allowed = {bid for bid, srcs in linked.items() if srcs and srcs <= chosen}
-    for row in conn.execute(sa.select(blocks.c.id, blocks.c.satisfies).where(blocks.c.canonical_id.is_(None))):
+    for row in conn.execute(sa.select(blocks.c.id, blocks.c.satisfies).where(blocks.c.canonical_id.is_(None))
+                            .where(blocks.c.valid_to.is_(None))):
         if row.id in linked:
             continue
         selectors = row.satisfies or []
@@ -67,7 +68,9 @@ def blocks_in_scope(conn) -> set[str] | None:
 def harmonize(engine: Engine, threshold: float = MERGE_THRESHOLD) -> dict:
     merged = edges_moved = 0
     with engine.begin() as conn:
-        rows = [dict(r) for r in conn.execute(sa.select(blocks).where(blocks.c.canonical_id.is_(None))).mappings()]
+        # Closed blocks (a 0.1 measure without quotes, say) are never merged into or kept.
+        rows = [dict(r) for r in conn.execute(sa.select(blocks).where(blocks.c.canonical_id.is_(None))
+                                              .where(blocks.c.valid_to.is_(None))).mappings()]
         allowed = blocks_in_scope(conn)
         if allowed is not None:
             rows = [r for r in rows if r["id"] in allowed]
@@ -100,7 +103,7 @@ def harmonize(engine: Engine, threshold: float = MERGE_THRESHOLD) -> dict:
                             {"id": next_id(conn, "REQ"), "obligation_id": edge["obligation_id"], "block_id": keep["id"],
                              "rationale": edge["rationale"], "rationale_start": edge["rationale_start"],
                              "rationale_end": edge["rationale_end"], "method": "harmonized",
-                             "obligation_text_hash": edge["obligation_text_hash"]},
+                             "obligation_text_hash": edge["obligation_text_hash"], "evidence": edge["evidence"]},
                             why=trail, valid_from=datetime.now(timezone.utc).date(),
                         )
                     edges_moved += 1

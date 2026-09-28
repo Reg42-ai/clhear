@@ -75,9 +75,14 @@ def parse_structure(text: str) -> dict:
     subject = _STRIP_TRAIL.sub("", sentence[: m.start()]).strip()
     rest = sentence[m.end():].strip()
     condition = ""
+    # "shall, to the extent possible, erase ...": the aside qualifies the duty; the action follows it.
+    aside = re.match(r"^,\s*([^,]{1,120}),\s*(.+)$", rest)
+    if aside:
+        condition, rest = aside.group(1).strip(), aside.group(2).strip()
+    rest = rest.lstrip(" ,;:")
     cm = _CONDITION.search(rest)
     if cm and cm.start() > 0:
-        condition = _STRIP_TRAIL.sub("", cm.group("cond")).strip()
+        condition = "; ".join(filter(None, [condition, _STRIP_TRAIL.sub("", cm.group("cond")).strip()]))
         rest = _STRIP_TRAIL.sub("", rest[: cm.start()]).strip()
     # Leading condition: "Where X, a firm must Y" -> the condition leaves the subject.
     lead = re.match(r"^(?P<cond>(?:if|where|when|whenever|unless|subject to)\b[^,]{3,200}),\s*(?P<subj>.+)$", subject, re.I)

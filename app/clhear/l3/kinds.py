@@ -113,6 +113,9 @@ KIND_NOUNS: dict[str, frozenset[str]] = {
     "Workflow": frozenset({"workflow", "workflows", "escalation"}),
 }
 ROLE_VERBS = frozenset({"appoint", "designate", "nominate", "employ", "name", "engage"})
+# Verbs that put a role or body in place. After any other verb a role or body noun is who the
+# action concerns ("notify the management body"), not the measure.
+HOLDING_VERBS = ROLE_VERBS | {"establish", "set", "constitute", "form", "convene", "maintain", "have", "create"}
 _PREPOSITION = re.compile(r"\s(?:of|to|for|in|on|with|by|from|at|about|under|within|between|against|into|that|which|who)\s", re.I)
 
 
@@ -124,11 +127,14 @@ def head_phrase(obj: str) -> str:
 def kind_from_words(verb: str, obj: str) -> tuple[str, str]:
     """(kind, the word it was read from). ``Unspecified`` with no word when the
     duty's words do not say what kind of thing the measure is."""
-    if verb.lower() in ROLE_VERBS:
-        return "Role", verb
+    verbs = [v.lower() for v in re.findall(r"[A-Za-z]+", verb) if v.lower() not in {"and", "or"}]
+    role_verb = next((v for v in re.findall(r"[A-Za-z]+", verb) if v.lower() in ROLE_VERBS), None)
+    if role_verb:
+        return "Role", role_verb
+    holding = not verbs or any(v in HOLDING_VERBS for v in verbs)
     for word in re.findall(r"[A-Za-z]+", head_phrase(obj)):
         for kind, nouns in KIND_NOUNS.items():
-            if word.lower() in nouns:
+            if word.lower() in nouns and (holding or kind not in ("Role", "Body")):
                 return kind, word
     return "Unspecified", ""
 
