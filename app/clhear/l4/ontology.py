@@ -104,6 +104,10 @@ def snapshot() -> dict:
     from app.clhear.l1.scopes import active
 
     if not active():
+        from app.clhear.settings import get_settings
+
+        if not get_settings().clhear_curated_finance:
+            return dict(EMPTY_SNAPSHOT)  # the host's sources define the ontology
         return l4_registers.ontology_snapshot()
     # Jurisdictions and their regulators are the ones the scope's own sources name.
     from app.clhear.l1.source_registry import S

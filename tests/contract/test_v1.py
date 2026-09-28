@@ -41,6 +41,7 @@ def test_openapi_paths_match_the_contract():
         "/v1/blueprints/{blueprint_id}/diff",
         "/v1/contributions/validate",
         "/v1/health",
+        "/v1/profile-schema",
         "/v1/profiles/{profile_id}",
         "/v1/releases/{release_id}",
         "/v1/releases/{release_id}/blueprints/{profile_id}",

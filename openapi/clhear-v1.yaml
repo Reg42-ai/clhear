@@ -454,6 +454,34 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Health
+  /v1/profile-schema:
+    get:
+      operationId: profile_schema_v1_profile_schema_get
+      parameters:
+      - in: header
+        name: authorization
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Profile Schema V1 Profile Schema Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Profile Schema
   /v1/profiles/{profile_id}:
     get:
       operationId: get_profile_v1_profiles__profile_id__get

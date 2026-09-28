@@ -259,7 +259,17 @@ def create_app() -> FastAPI:
         out = _profile_out(row)
         out["status"] = stored.get("status")
         out["engine_id"] = stored.get("id")
+        validity = stored.get("validity") if isinstance(stored.get("validity"), dict) else {}
+        out["validation"] = {"valid": stored.get("status") == "valid", "errors": validity.get("errors") or [],
+                             "warnings": validity.get("warnings") or []}
         return out
+
+    @application.get("/v1/profile-schema")
+    def profile_schema() -> dict:
+        from app.clhear.l4.validate import profile_schema as schema
+
+        with _engine().connect() as conn:
+            return {"fields": schema(conn)}
 
     @application.get("/v1/profiles/{profile_id}")
     def get_profile(profile_id: str) -> dict:

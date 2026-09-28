@@ -70,12 +70,63 @@ class Ontology:
         self.rules = _live(conn, validity_rules)
         snap = snapshot()
         self.jurisdictions = {j["code"].upper(): j for j in snap["jurisdictions"]}
+        for code in _source_jurisdictions(conn):
+            self.jurisdictions.setdefault(code, {"code": code, "name": code, "regulators": []})
         self.version = snapshot_version(snap)
         self.lookups = {"licences": self.licences, "products_services": self.products,
                         "client_types": self.clients, "channels": self.channels}
 
     def empty(self) -> bool:
         return not self.licences.rows
+
+
+# How each profile fact changes which duties apply. Served by GET /v1/profile-schema.
+FIELD_EFFECTS = {
+    "jurisdictions": "A duty from a source with a declared jurisdiction applies only if that code is listed here. "
+                     "Duties from sources with no jurisdiction apply everywhere.",
+    "authorisations": "Duties addressed to 'a firm', 'an authorised person' or 'an obliged entity' apply only when at "
+                      "least one authorisation is listed. Named licences narrow further when the ontology knows them.",
+    "products": "Duties whose own condition names a product (for example client money or custody) apply only "
+                "when that product is listed.",
+    "customer_base": "Duties conditional on a client type (retail, professional ...) apply only when it is listed.",
+    "channels": "Duties conditional on a channel (online, intermediaries ...) apply only when it is listed.",
+    "data_footprint": "Duties addressed to a data controller or processor apply only when this is set "
+                      "(any non-empty description of the personal data you handle).",
+    "crypto_services": "Duties about crypto-assets apply only when true.",
+    "financial_entity_dora": "Duties addressed to 'financial entities' apply only when true.",
+}
+
+
+def profile_schema(conn: Connection) -> list[dict]:
+    """The profile fields, what each one does, and the values this install knows."""
+    onto = Ontology(conn)
+    fields = []
+    for key, spec in sorted(onto.schema.items(), key=lambda kv: list(FIELD_EFFECTS).index(kv[0]) if kv[0] in FIELD_EFFECTS else 99):
+        known: list[str] | None = None
+        if key == "jurisdictions":
+            known = sorted(onto.jurisdictions)
+        elif key in LIST_KEYS_WITH_ONTOLOGY:
+            known = onto.lookups[LIST_KEYS_WITH_ONTOLOGY[key]].names() or None
+        fields.append({"key": key, "type": spec["type"], "description": spec.get("description") or "",
+                       "effect": FIELD_EFFECTS.get(key, ""), "known_values": known,
+                       "closed": bool(known) and key in LIST_KEYS_WITH_ONTOLOGY})
+    return fields
+
+
+def _source_jurisdictions(conn: Connection) -> set[str]:
+    """Jurisdictions the registered sources declare (host sources and imported ones)."""
+    from app.clhear.hoststore import host_sources
+    from app.clhear.l1.models import sources
+
+    found: set[str] = set()
+    for table in (host_sources, sources):
+        schema = None if conn.dialect.name == "sqlite" else table.schema
+        if not sa.inspect(conn).has_table(table.name, schema=schema):
+            continue
+        for (value,) in conn.execute(sa.select(table.c.jurisdiction).distinct()):
+            if value and value.strip():
+                found.add(value.strip().upper())
+    return found
 
 
 def _as_list(value) -> list:
@@ -111,12 +162,17 @@ def validate_with(onto: Ontology, attributes: dict) -> dict:
     # 2. jurisdictions
     jurs: list[str] = []
     for j in _as_list(normalized.get("jurisdictions")):
-        code = str(j).upper()
-        if code in onto.jurisdictions:
+        code = str(j).strip().upper()
+        if not code:
+            continue
+        if code not in jurs:
             jurs.append(code)
-        else:
-            errors.append({"code": "unknown_value", "attribute": "jurisdictions", "value": j,
-                           "message": f"'{j}' is not a jurisdiction in the L4 ontology", "allowed": sorted(onto.jurisdictions)})
+        if code not in onto.jurisdictions:
+            # Where an organisation operates is a fact about it, not a claim to check.
+            # No source in scope names this code, so no duty is selected by it.
+            warnings.append({"code": "jurisdiction_not_in_sources", "attribute": "jurisdictions", "value": code,
+                             "message": f"No registered source declares jurisdiction '{code}'",
+                             "known": sorted(onto.jurisdictions)})
     normalized["jurisdictions"] = jurs
 
     # 2. ontology-backed lists (skip the closed-world check while the ontology is empty: honest, not inventive)

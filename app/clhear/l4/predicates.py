@@ -180,7 +180,7 @@ def deterministic_predicates(ob: dict, onto: _Onto) -> list[dict]:
     """The deterministic edges an obligation should have (no DB writes)."""
     out: list[dict] = []
     jur = (ob.get("jurisdiction") or "").strip()
-    if jur and jur.upper() in onto.view.jurisdictions:
+    if jur:
         out.append({"predicate": {"jurisdictions": jur.upper()}, "basis": "jurisdiction",
                     "rationale": f"jurisdiction: obligation derived from a {jur.upper()} source"})
     subject_text = " ".join(filter(None, [ob.get("subject"), ob.get("addressee")]))
@@ -196,9 +196,10 @@ def deterministic_predicates(ob: dict, onto: _Onto) -> list[dict]:
             if subject:
                 break
     out += subject
-    # Structured `condition` when L2 has split the duty; otherwise the duty sentence itself.
-    condition_text = ob.get("condition") or ob.get("determination") or ob.get("statement") or ""
-    out += _scan(condition_text, _CONDITION_CUES, onto, jur, "condition")
+    # Only the duty's own condition ("where it holds client money ...") narrows who it
+    # applies to. A word elsewhere in the sentence ("online", "consumers") describes
+    # the duty; it does not make it conditional.
+    out += _scan(ob.get("condition") or "", _CONDITION_CUES, onto, jur, "condition")
     # A subject edge already asserting crypto/DORA/... shadows the same condition edge.
     seen: set[str] = set()
     deduped = []
@@ -434,22 +435,35 @@ def edges_by_obligation(conn: Connection) -> dict[str, list[dict]]:
     return out
 
 
-def obligations_for_attributes(conn: Connection, attributes: dict) -> list[dict]:
-    """Obligations whose live applies_to edges all match the attributes."""
+def applicability(conn: Connection, attributes: dict, *, source_keys=None) -> dict[str, dict]:
+    """Every live obligation (optionally only those of ``source_keys``) and whether it
+    applies to an organisation with these attributes.
+
+    The rule: an obligation applies when every one of its live applicability edges
+    matches. A jurisdiction edge exists when the source declares a jurisdiction; an
+    obligation with no edges at all applies to every organisation. The edges that
+    did not match are returned, so "not applicable" always carries its reason.
+    """
     edges = edges_by_obligation(conn)
-    if not edges:
-        return []
-    rows = {r["id"]: dict(r) for r in conn.execute(
-        sa.select(obligations).where(obligations.c.id.in_(list(edges))).where(obligations.c.status.in_(LIVE_STATUS))).mappings()}
+    query = (sa.select(obligations).where(obligations.c.status.in_(LIVE_STATUS))
+             .where(obligations.c.canonical_id.is_(None)))
+    if source_keys is not None:
+        query = query.where(obligations.c.source_key.in_(list(source_keys)))
+    out: dict[str, dict] = {}
+    for ob in conn.execute(query).mappings():
+        es = edges.get(ob["id"], [])
+        failed = [e for e in es if not matches(e["predicate"], attributes)]
+        out[ob["id"]] = {"obligation": dict(ob), "edges": es, "applies": not failed, "failed": failed}
+    return out
+
+
+def obligations_for_attributes(conn: Connection, attributes: dict, *, source_keys=None) -> list[dict]:
+    """Obligations whose live applies_to edges all match the attributes."""
     out = []
-    for oid, es in edges.items():
-        ob = rows.get(oid)
-        # An obligation applies through L4 only when its jurisdiction is known
-        # (a subject-only reading must not attach a foreign duty to every firm).
-        if ob is None or not any(e["basis"] == "jurisdiction" for e in es):
+    for oid, verdict in applicability(conn, attributes, source_keys=source_keys).items():
+        if not verdict["applies"]:
             continue
-        if not all(matches(e["predicate"], attributes) for e in es):
-            continue
+        ob, es = verdict["obligation"], verdict["edges"]
         out.append({
             "obligation_id": ob["stable_id"] or ob["id"], "derivation_key": ob["id"], "title": ob["title"],
             "jurisdiction": ob["jurisdiction"], "regulator": ob["regulator"], "source_key": ob["source_key"],

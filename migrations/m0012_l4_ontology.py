@@ -44,6 +44,11 @@ def upgrade(conn: Connection) -> None:
             conn.execute(attribute_schema.insert().values(
                 key=item["key"], type=item["type"], description=item.get("description", ""), read_by=item.get("read_by", [])))
 
+    from app.clhear.settings import get_settings
+
+    if not get_settings().clhear_curated_finance:
+        return  # a host's own sources define the ontology (CLHEAR_CURATED_FINANCE=1 seeds the finance set)
+
     from app.clhear.l4.ontology import build_ontology_in
 
     build_ontology_in(conn, check_registers=False, publish=False)

@@ -85,7 +85,10 @@ def upgrade(conn: Connection) -> None:
     from app.clhear.l1.scopes import active
 
     # A scoped corpus derives its activities from its own obligations.
-    curated_rows = {} if active() else {c["id"]: c for c in curated.load("l5_activities")}
+    from app.clhear.settings import get_settings
+
+    finance = get_settings().clhear_curated_finance
+    curated_rows = {} if active() or not finance else {c["id"]: c for c in curated.load("l5_activities")}
     for item in curated_rows.values():
         exists = conn.execute(sa.select(activities.c.id).where(activities.c.id == item["id"])).first()
         values = dict(
