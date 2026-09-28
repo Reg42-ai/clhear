@@ -77,7 +77,8 @@ obligations = sa.Table(
 
 OBLIGATION_TYPES = (
     "conduct", "disclosure", "reporting", "record_keeping", "governance",
-    "prudential", "prohibition", "authorisation", "consumer_protection", "other",
+    "prudential", "prohibition", "authorisation", "consumer_protection",
+    "data_protection", "security", "risk_management", "training", "safety", "other",
 )
 ASSERT_STRENGTHS = ("explicit", "implied")
 L2_CHANGE_KINDS = ("added", "updated", "revoked")

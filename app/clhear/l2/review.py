@@ -27,7 +27,7 @@ from app.clhear.platform.router import complete
 
 log = logging.getLogger("clhear.l2.review")
 
-MAX_PER_RUN = 40
+MAX_PER_RUN = 200
 VERDICTS = ("correct", "incorrect", "unsure")
 
 

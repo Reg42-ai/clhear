@@ -49,6 +49,14 @@ TYPE_RULES: tuple[tuple[str, re.Pattern], ...] = (
     ("record_keeping", re.compile(r"\b(?:record|records|retain|keep .{0,20}(?:records|register)|maintain .{0,20}(?:records|register|log))\b", re.I)),
     ("authorisation", re.compile(r"\b(?:authoris|authoriz|licen[cs]e|permission|registration|registered)\b", re.I)),
     ("prudential", re.compile(r"\b(?:capital|liquidity|own funds|prudential|solvency|leverage)\b", re.I)),
+    ("data_protection", re.compile(r"\b(?:personal data|data subjects?|privacy|processing of (?:personal )?(?:data|information)|"
+                                   r"consent|data protection|personal information)\b", re.I)),
+    ("security", re.compile(r"\b(?:security|encrypt|access control|authenticat|vulnerabilit|incident|breach|"
+                            r"malware|cyber|confidentiality|integrity and availability)\b", re.I)),
+    ("risk_management", re.compile(r"\b(?:risk assessment|assess(?:es|ing)? (?:the )?risks?|risk management|"
+                                   r"risks? (?:to|of)|mitigat|impact assessment)\b", re.I)),
+    ("training", re.compile(r"\b(?:train(?:ing|ed)?|awareness|competen(?:ce|t))\b", re.I)),
+    ("safety", re.compile(r"\b(?:safety|hazard|injur|harm to (?:health|persons)|protective equipment)\b", re.I)),
     ("governance", re.compile(r"\b(?:governance|senior management|management body|board|policies and procedures|"
                               r"systems and controls|compliance function|oversight|responsibilit)\b", re.I)),
     ("consumer_protection", re.compile(r"\b(?:client|customer|consumer|investor|retail|best interests|fair|clearly|not misleading)\b", re.I)),

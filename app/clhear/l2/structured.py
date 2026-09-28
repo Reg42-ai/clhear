@@ -26,7 +26,7 @@ from app.clhear.platform.router import complete
 
 log = logging.getLogger("clhear.l2.structured")
 
-MAX_PER_RUN = 25
+MAX_PER_RUN = 200
 GROUNDING_MIN = 0.8
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP = frozenset({"the", "a", "an", "of", "to", "and", "or", "in", "on", "for", "by", "with", "that", "which",

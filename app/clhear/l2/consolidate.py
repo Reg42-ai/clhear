@@ -193,7 +193,7 @@ def draft_and_propose(engine: Engine, llm, limit: int = MAX_CANDIDATES_PER_RUN) 
             canonical_statement=canonical,
             themes=draft["themes"],
             members=members,
-            status="curated",
+            status="proposed",  # model-drafted: a person curates it
             drafted_by=draft["drafted_by"],
             approved_by="ai-auto-apply",
         )

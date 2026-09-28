@@ -23,32 +23,38 @@ from app.clhear.platform.router import complete
 
 log = logging.getLogger("clhear.l3.generate")
 
-MAX_BLOCKS = 8
-MIN_CLUSTER = 2
+MAX_BLOCKS = 40      # model calls per run; obligations beyond them are reported as remaining
+CLUSTER_SIZE = 10
 DEDUP_SIM = 0.55
 
 
-def _clusters(engine: Engine) -> list[list[dict]]:
-    with engine.connect() as conn:
-        from app.clhear.l1.scopes import in_scope
+def _unlinked(engine: Engine) -> list[dict]:
+    """Live obligations in scope that no measure satisfies yet."""
+    from app.clhear.derived_models import requires
+    from app.clhear.l1.scopes import in_scope
 
-        rows = [
+    with engine.connect() as conn:
+        linked = {r[0] for r in conn.execute(sa.select(requires.c.obligation_id).where(requires.c.valid_to.is_(None)))}
+        return [
             dict(r)
             for r in conn.execute(
                 sa.select(obligations).where(obligations.c.status.in_(("derived", "validated")))
+                .order_by(obligations.c.source_key, obligations.c.id)
             ).mappings()
-            if in_scope(r["source_key"])
+            if in_scope(r["source_key"]) and r["id"] not in linked
         ]
-    by_theme: dict[str, list[dict]] = defaultdict(list)
-    for r in rows:
-        themes = r["themes"] if isinstance(r["themes"], list) else []
-        key = themes[0] if themes else "general"
-        by_theme[key].append(r)
+
+
+def _clusters(engine: Engine) -> list[list[dict]]:
+    """Unlinked obligations grouped by duty type, in batches the model can design one measure for."""
+    by_type: dict[str, list[dict]] = defaultdict(list)
+    for r in _unlinked(engine):
+        by_type[r.get("obligation_type") or "other"].append(r)
     clusters = []
-    for theme, group in by_theme.items():
-        if len(group) >= MIN_CLUSTER:
-            clusters.append(sorted(group, key=lambda r: r["id"])[:12])
-    return clusters[:MAX_BLOCKS]
+    for kind in sorted(by_type):
+        group = by_type[kind]
+        clusters.extend(group[i:i + CLUSTER_SIZE] for i in range(0, len(group), CLUSTER_SIZE))
+    return clusters
 
 
 def _existing_blocks(engine: Engine) -> list[dict]:
@@ -56,12 +62,13 @@ def _existing_blocks(engine: Engine) -> list[dict]:
         return [dict(r) for r in conn.execute(sa.select(blocks_t)).mappings()]
 
 
-def _is_duplicate(name: str, existing: list[dict]) -> bool:
+def _duplicate_of(name: str, existing: list[dict]) -> str | None:
+    """The id of an existing measure with (nearly) the same name."""
     tok = _tokens(name)
     for b in existing:
-        if _jaccard(tok, _tokens(b["name"])) >= DEDUP_SIM:
-            return True
-    return False
+        if b.get("id") and _jaccard(tok, _tokens(b["name"])) >= DEDUP_SIM:
+            return b["id"]
+    return None
 
 
 def _slug(text: str) -> str:
@@ -70,19 +77,22 @@ def _slug(text: str) -> str:
 
 def generate_blocks(engine: Engine, llm, limit: int = MAX_BLOCKS) -> dict:
     existing = _existing_blocks(engine)
-    written = blocked = 0
+    written = blocked = reused = 0
     ids: list[str] = []
-    for cluster in _clusters(engine)[:limit]:
+    clusters = _clusters(engine)
+    remaining = sum(len(c) for c in clusters[limit:])
+    for cluster in clusters[:limit]:
         live_ids = {o["id"] for o in cluster}
         prompt = (
-            "Design ONE reusable compliance building block that satisfies these obligations. "
+            "Design ONE reusable compliance building block (a process, control, record, role, system or policy an "
+            "organisation puts in place) that satisfies these obligations. Name it as a concrete measure. "
             "satisfies MUST be a list of {\"source_key\", \"refs\"} drawn ONLY from the obligations. "
             "Do not invent sources or refs.\n"
             'JSON: {"name": "", "kind": "System|Document|Role|Configuration|Process|Workflow|Asset|Body", '
             '"purpose": "", "description": "", "capability": "", '
             '"evidence_artifacts": ["..."], "satisfies": [{"source_key": "", "refs": [""]}]}\n\n'
             + "\n".join(
-                f"- {o['id']} [{o['source_key']} #{o['clause_ref']}] {o['title']}"
+                f"- {o['id']} [{o['source_key']} #{o['clause_ref']}] {o.get('determination') or o['title']}"
                 for o in cluster
             )
         )
@@ -100,9 +110,6 @@ def generate_blocks(engine: Engine, llm, limit: int = MAX_BLOCKS) -> dict:
             blocked += 1
             continue
         name = str(parsed["name"])[:160]
-        if _is_duplicate(name, existing):
-            blocked += 1
-            continue
         satisfies = []
         for sel in parsed.get("satisfies") or []:
             if not isinstance(sel, dict):
@@ -115,6 +122,12 @@ def generate_blocks(engine: Engine, llm, limit: int = MAX_BLOCKS) -> dict:
                 satisfies.append({"source_key": key, "refs": refs})
         if not satisfies:
             blocked += 1
+            continue
+        duplicate = _duplicate_of(name, existing)
+        if duplicate:
+            # Same measure under another name: these obligations need it too.
+            _link_cluster(engine, cluster, satisfies, duplicate, name, result.model)
+            reused += 1
             continue
         from app.clhear.l3.kinds import KINDS, infer_kind
 
@@ -140,19 +153,10 @@ def generate_blocks(engine: Engine, llm, limit: int = MAX_BLOCKS) -> dict:
         )
         with engine.begin() as conn:
             exists = conn.execute(sa.select(blocks_t.c.id).where(blocks_t.c.id == bid)).first()
-            if exists:
-                blocked += 1
-                continue
-            conn.execute(blocks_t.insert().values(id=bid, **values))
-            # HLD v2 §4.3: the closed-world satisfies anchors become explicit requires edges.
-            from app.clhear.l3.decompose import link, why_for
-
-            for o in cluster:
-                if any(sel["source_key"] == o["source_key"] and o["clause_ref"] in sel["refs"] for sel in satisfies):
-                    why = why_for(o["stable_id"] or o["id"], method="llm", confidence=0.7,
-                                  summary=f"l3.block_generate proposed block '{name}' for this obligation (closed-world refs)",
-                                  evidence_refs=[o["id"]], model_manifest={"model": result.model, "task": "l3.block_generate"})
-                    link(conn, obligation=o, block_id=bid, method="llm", why=why)
+            if not exists:
+                conn.execute(blocks_t.insert().values(id=bid, **values))
+        # HLD v2 §4.3: the closed-world satisfies anchors become explicit requires edges.
+        _link_cluster(engine, cluster, satisfies, bid, name, result.model)
         from app.clhear.governance import mark_generated
 
         mark_generated(
@@ -160,18 +164,29 @@ def generate_blocks(engine: Engine, llm, limit: int = MAX_BLOCKS) -> dict:
             routing_reason="L3 synthesis with closed-world satisfies",
             detail={"satisfies": satisfies, "cluster_size": len(cluster)},
         )
-        existing.append({"name": name})
+        existing.append({"id": bid, "name": name})
         written += 1
         ids.append(bid)
-        live_ids  # closed-world already enforced via cluster refs
     try:
         from app.clhear import ai_ops
 
         ai_ops.record(
             engine, kind="fleet_generation", layer="L3", fleet="l3.generate",
-            reasoning=f"Mason: {written} building blocks generated; {blocked} blocked by eval/dedupe/grounding",
-            detail={"written": written, "blocked": blocked, "ids": ids},
+            reasoning=f"Mason: {written} building blocks generated, {reused} reused; {blocked} blocked by grounding",
+            detail={"written": written, "reused": reused, "blocked": blocked, "ids": ids, "remaining": remaining},
         )
     except Exception:
         log.exception("L3 ai_ops failed")
-    return {"written": written, "blocked": blocked, "ids": ids}
+    return {"written": written, "reused": reused, "blocked": blocked, "ids": ids, "remaining_obligations": remaining}
+
+
+def _link_cluster(engine: Engine, cluster: list[dict], satisfies: list[dict], block_id: str, name: str, model: str) -> None:
+    from app.clhear.l3.decompose import link, why_for
+
+    with engine.begin() as conn:
+        for o in cluster:
+            if any(sel["source_key"] == o["source_key"] and o["clause_ref"] in sel["refs"] for sel in satisfies):
+                why = why_for(o["stable_id"] or o["id"], method="llm", confidence=0.7,
+                              summary=f"l3.block_generate proposed block '{name}' for this obligation (closed-world refs)",
+                              evidence_refs=[o["id"]], model_manifest={"model": model, "task": "l3.block_generate"})
+                link(conn, obligation=o, block_id=block_id, method="llm", why=why)

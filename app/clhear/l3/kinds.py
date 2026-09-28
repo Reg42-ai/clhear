@@ -94,7 +94,7 @@ _KIND_CUES: tuple[tuple[str, re.Pattern], ...] = (
     ("Role", re.compile(r"\b(appoint|designat\w+|officer|MLRO|nominated officer|compliance function|senior manager\w*|data protection officer|responsible (?:person|individual)|head of)\b", re.I)),
     ("Document", re.compile(r"\b(polic(?:y|ies)|written procedures?|procedures? (?:document|manual)|register|charter|terms of business|plan|statement|manual|contract|agreement|disclosure document|prospectus|report(?:s)? in writing)\b", re.I)),
     ("System", re.compile(r"\b(system|systems and controls|monitor\w*|surveillance|screen\w*|automated|software|information technology|ICT|record-keeping system|database)\b", re.I)),
-    ("Asset", re.compile(r"\b(own funds|capital|client money|client assets|safeguard\w*|insurance|indemnity|reserve|liquidity|collateral|segregat\w+)\b", re.I)),
+    ("Asset", re.compile(r"\b(own funds|capital|client money|client assets|safeguarding (?:of )?(?:client|customer) (?:money|funds|assets)|insurance|indemnity|reserve|liquidity|collateral|segregat\w+)\b", re.I)),
     ("Configuration", re.compile(r"\b(threshold|limit|no (?:more|less) than|not exceed\w*|at least \d|maximum|minimum|within \d+ (?:business |working )?days|parameter)\b", re.I)),
     ("Workflow", re.compile(r"\b(escalat\w+|hand[- ]?off|end[- ]to[- ]end|workflow|approval chain|sign[- ]off)\b", re.I)),
     ("Process", re.compile(r"\b(review|assess\w*|report|notify|submit|file|verify|identify|record|retain|train\w*|test\w*|reconcil\w+|conduct|carry out|perform|disclose|inform)\b", re.I)),

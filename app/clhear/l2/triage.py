@@ -18,7 +18,8 @@ from sqlalchemy.engine import Engine
 from app.clhear.derived_models import obligations
 from app.clhear.l1.models import clauses, family_members, source_versions, sources
 from app.clhear.l2 import registry
-from app.clhear.l2.extract import ADDRESSEE, MAX_STATEMENT, _title_from, detect_duty, not_a_duty, obligation_id, why_id
+from app.clhear.l2.extract import (ADDRESSEE, MAX_STATEMENT, _title_from, clause_contexts, container_clause_ids,
+                                   detect_duty, duty_text, not_a_duty, obligation_id, why_id)
 from app.clhear.platform import record
 from app.clhear.platform.gateway import parse_json_object
 from app.clhear.platform.ids import next_id
@@ -27,7 +28,7 @@ from app.clhear.platform.router import complete
 log = logging.getLogger("clhear.l2.triage")
 
 WEAK_MODAL = re.compile(r"\b(?:should|ought to|may|is expected to|are expected to)\b", re.I)
-MAX_PER_RUN = 25
+MAX_PER_RUN = 200
 
 
 def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
@@ -51,18 +52,25 @@ def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
         for sid, src in srcs.items():
             if sid not in binding or sid not in versions or not in_scope(src.key):
                 continue
+            containers = container_clause_ids(conn, versions[sid].id)
+            contexts = clause_contexts(conn, versions[sid].id)
             for row in conn.execute(
                 sa.select(clauses).where(clauses.c.source_version_id == versions[sid].id)
-                .where(clauses.c.public_ok.is_(True))
+                .where(clauses.c.public_ok.is_(True)).order_by(clauses.c.ordering)
             ):
-                text = row.text or ""
-                if obligation_id(src.key, row.ref) in existing:
+                if row.id in containers:
                     continue
-                if detect_duty(text, row.ref or "", "") is not None:
+                ref = row.ref or f"clause-{row.ordering}"
+                context = contexts.get(row.id) or {}
+                text = duty_text(row.text or "", context)
+                heading = context.get("heading", "")
+                if obligation_id(src.key, ref) in existing:
+                    continue
+                if detect_duty(text, ref, heading) is not None:
                     continue
                 # The rules' "not a duty" (procedure, construction, penalties) is final;
                 # a model is never asked to overrule it.
-                if not_a_duty(text, row.ref or "", ""):
+                if not_a_duty(text, ref, heading):
                     continue
                 if not WEAK_MODAL.search(text):
                     continue
@@ -70,7 +78,7 @@ def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
                     continue
                 out.append({
                     "source_key": src.key,
-                    "ref": row.ref,
+                    "ref": ref,
                     "text": text,
                     "text_hash": row.text_hash,
                     "clause_id": row.id,
@@ -118,7 +126,8 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
         if not span_is_grounded(span, cand["text"]):
             rejected += 1
             continue
-        if not parsed.get("is_duty"):
+        verdict = parsed.get("is_duty")
+        if not (verdict is True or str(verdict).strip().lower() == "true"):
             rejected += 1
             continue
         oid = obligation_id(cand["source_key"], cand["ref"])
