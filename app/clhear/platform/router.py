@@ -263,7 +263,7 @@ def build_providers(settings=None) -> dict[str, Provider]:
         return {"fake": FakeProvider()}
     out: dict[str, Provider] = {}
     if mode == "anthropic" and _configured_secret(settings.anthropic_api_key):
-        out["anthropic"] = AnthropicProvider(settings.anthropic_api_key, model or "claude-sonnet-4-5")
+        out["anthropic"] = AnthropicProvider(settings.anthropic_api_key, model or AnthropicProvider.DEFAULT_MODEL)
     elif mode == "openai_compatible" and settings.openai_base_url and _configured_secret(settings.openai_api_key):
         out["openai_compatible"] = OpenAICompatibleProvider(settings.openai_base_url, settings.openai_api_key, model or "gpt-4o")
     elif mode == "bedrock" and model:
@@ -386,7 +386,8 @@ class Router:
     def ladder_for(self, task_class: str) -> tuple[list[str], str]:
         provider = self._provider_name()
         if provider in CONSUMER_PROVIDERS:
-            model = get_settings().clhear_llm_model or get_settings().bedrock_model_id or "configured"
+            configured = getattr(self.providers.get(provider), "model", "") if self.providers else ""
+            model = configured or get_settings().clhear_llm_model or get_settings().bedrock_model_id
             return [model], "configured"
         classes = (self.model_manifest or {}).get("task_classes") or {}
         entry = classes.get(task_class)

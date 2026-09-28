@@ -254,7 +254,10 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
         with engine.connect() as conn:
             inputs = layer_builds.check_inputs(conn, layer, name)
         started = datetime.now(timezone.utc)
+        before = dict(_llm_stats(llm))
         detail = steps[layer]()
+        after = _llm_stats(llm)
+        calls = {"ok": after["ok"] - before["ok"], "failed": after["failed"] - before["failed"]}
         if layer == "L1":
             report["sources"] = detail.get("sources") or {}
             report["failed_sources"] = detail.get("failed_sources") or []
@@ -263,7 +266,10 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
                 raise RuntimeError("No text could be read from this scope's sources" + (f" ({reasons})" if reasons else ""))
         built = layer_builds.record(engine, layer, scope=name, inputs=inputs, counts=_counts(engine, layer),
                                     steps=detail, started_at=started)
-        report["layers"][layer] = {"revision": built["revision"], "inputs": inputs, "counts": built["counts"]}
+        report["layers"][layer] = {"revision": built["revision"], "inputs": inputs, "counts": built["counts"],
+                                   "model_calls": calls}
+        if calls["failed"] and not calls["ok"]:
+            raise RuntimeError(f"Every model call in {layer} failed ({calls['failed']}); last error: {after['last_error']}")
         log.info("built %s %s from %s", layer, built["revision"][:12], {k: v[:12] for k, v in inputs.items()})
     if "L7" in report["layers"]:
         view = "L7 item priority"
@@ -272,6 +278,12 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
         report["views"] = {view: {"inputs": inputs, "item_scores": item_priority(engine)}}
     report["profiles"] = held["profiles"]
     return report
+
+
+def _llm_stats(llm) -> dict:
+    gateway = getattr(llm, "gateway", llm)
+    stats = getattr(gateway, "stats", None) or {}
+    return {"ok": stats.get("ok", 0), "failed": stats.get("failed", 0), "last_error": stats.get("last_error", "")}
 
 
 def _router(engine: Engine, *, allow_fake: bool = False):

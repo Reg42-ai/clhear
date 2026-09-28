@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # ``fake`` is the offline quickstart only.
     clhear_llm_provider: str = ""  # fake | anthropic | openai_compatible | bedrock
     clhear_llm_model: str = ""
+    # Reasoning effort for Claude models that take it: low | medium | high | xhigh | max.
+    clhear_llm_effort: str = "medium"
+    # Server-side refusal fallbacks on Claude Opus 5 / Fable (first-party API only).
+    clhear_llm_fallbacks: bool = True
     anthropic_api_key: str = ""
     openai_base_url: str = ""
     openai_api_key: str = ""
