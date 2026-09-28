@@ -143,3 +143,26 @@ def test_a_scope_with_no_readable_text_fails_with_the_reason(live):
     run = client.get(f"/v1/runs/{queued['run_id']}").json()
     assert run["status"] == "failed" and "gone" in run["error"]
     assert "source.failed" in events and "run.failed" in events
+
+
+def test_the_walkthrough_example(live):
+    from pathlib import Path
+
+    client, _ = live
+    text = Path("examples/security-baseline/baseline.txt").read_text()
+    profiles = json.loads(Path("examples/security-baseline/profiles.json").read_text())
+    client.post("/v1/sources", json={"key": "baseline", "adapter": "local_text", "jurisdiction": "EU",
+                                     "locator": {"text": text}})
+    client.post("/v1/scopes", json={"name": "security-baseline", "sources": ["baseline"]})
+    for pid, body in profiles.items():
+        client.put(f"/v1/profiles/{pid}", json=body)
+    release = _run(client, "security-baseline", list(profiles))
+
+    startup = client.get(f"/v1/releases/{release}/blueprints/payments-startup").json()
+    lab = client.get(f"/v1/releases/{release}/blueprints/research-lab").json()
+    startup_refs = {c["clause_ref"] for c in startup["coverage"]}
+    assert {"sec-1", "sec-2", "sec-3", "sec-4/a", "sec-4/b", "sec-4/c", "sec-5", "sec-6"} <= startup_refs
+    assert "sec-8" not in startup_refs  # the supervisory authority's duty, not the organisation's
+    assert "sec-5" not in {c["clause_ref"] for c in lab["coverage"]}
+    assert [n["clause_ref"] for n in lab["not_applicable"]] == ["sec-5"]
+    assert lab["not_applicable"][0]["because"][0]["requires"] == {"data_footprint": "*"}

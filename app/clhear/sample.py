@@ -3,8 +3,9 @@
 """Offline sample corpus for the quickstart.
 
 The fake provider is constructed and called. The layers recorded here are a
-placeholder obligation, block, and activity for the sources the host declared.
-No regulation is fetched.
+placeholder obligation per declared source, one block and one activity that
+cover them all. No regulation is read: this shows the shape of a blueprint,
+and every sample blueprint says so (``"sample": true``).
 """
 from __future__ import annotations
 
@@ -64,7 +65,12 @@ def seed_rows(engine: Engine, source_keys: list[str]) -> dict:
                     "confidence": 0.9,
                     "method": "offline-sample",
                 }, why=_why("L2", "placeholder obligation for an offline sample", obligation_id))
-            if conn.execute(blocks.select().where(blocks.c.id == block_id)).first() is None:
+            anchor = {"source_key": key, "refs": [clause]}
+            existing_block = conn.execute(blocks.select().where(blocks.c.id == block_id)).mappings().first()
+            if existing_block is not None and anchor not in (existing_block["satisfies"] or []):
+                conn.execute(blocks.update().where(blocks.c.id == block_id)
+                             .values(satisfies=[*(existing_block["satisfies"] or []), anchor]))
+            if existing_block is None:
                 record.write(conn, blocks, {
                     "id": block_id,
                     "name": "Decision record",
@@ -96,7 +102,12 @@ def seed_rows(engine: Engine, source_keys: list[str]) -> dict:
                     "method": "offline-sample",
                     "obligation_text_hash": digest,
                 }, why=_why("L3", "placeholder requires edge for an offline sample", edge_id))
-            if conn.execute(activities.select().where(activities.c.id == activity_id)).first() is None:
+            existing_activity = conn.execute(activities.select().where(activities.c.id == activity_id)).mappings().first()
+            trigger = {"anchor": anchor, "when": {}}
+            if existing_activity is not None and trigger not in (existing_activity["triggers"] or []):
+                conn.execute(activities.update().where(activities.c.id == activity_id)
+                             .values(triggers=[*(existing_activity["triggers"] or []), trigger]))
+            if existing_activity is None:
                 record.write(conn, activities, {
                     "id": activity_id,
                     "name": "Keep the decision record",
@@ -148,7 +159,7 @@ def derive(engine: Engine, llm, profiles: list[dict]) -> dict:
             engine, profile.get("attributes") or {}, name=profile.get("name") or "",
             source="api", allow_invalid=True,
         )
-        composed = composer.compose_for_profile(engine, row["id"], requested_by="clhear.sample")
+        composed = {**composer.compose_for_profile(engine, row["id"], requested_by="clhear.sample"), "sample": True}
         host_id = profile.get("host_id") or row["id"]
         blueprints[host_id] = composed
         stored.append({"host_id": host_id, "engine_id": row["id"], "blueprint_id": composed.get("blueprint_id")})

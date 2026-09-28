@@ -38,7 +38,9 @@ _CONDITION = re.compile(
     r"except where|subject to)\b.*)$",
     re.I,
 )
-_LEADING_NUMBER = re.compile(r"^(?:\(?\d+[\.\)]\s*|\([a-z0-9]+\)\s*|[A-Z]{2,6}\s+\d+(?:\.\d+)*[A-Z]?\s*)+")
+_LEADING_NUMBER = re.compile(
+    r"^(?:\(?\d+[\.\)]\s*|\([a-z0-9]+\)\s*|[A-Z]{2,6}\s+\d+(?:\.\d+)*[A-Z]?\s*"
+    r"|(?:section|article|art\.|rule|clause|regulation|§+)\s*\d+[\w.\-]*?[.:]?\s+)+", re.I)
 _SENTENCE_END = re.compile(r"(?<=[.;:])\s+(?=[A-Z(\d])")
 _STRIP_TRAIL = re.compile(r"[\s,;:.]+$")
 
@@ -99,12 +101,11 @@ def parse_structure(text: str) -> dict:
     if cm and cm.start() > 0:
         condition = _STRIP_TRAIL.sub("", cm.group("cond")).strip()
         rest = _STRIP_TRAIL.sub("", rest[: cm.start()]).strip()
-    elif cm is None:
-        # Leading condition: "Where X, a firm must Y" -> subject carries it.
-        lead = re.match(r"^(?P<cond>(?:if|where|when|whenever|unless|subject to)\b[^,]{3,200}),\s*(?P<subj>.+)$", subject, re.I)
-        if lead:
-            condition = lead.group("cond").strip()
-            subject = lead.group("subj").strip()
+    # Leading condition: "Where X, a firm must Y" -> the condition leaves the subject.
+    lead = re.match(r"^(?P<cond>(?:if|where|when|whenever|unless|subject to)\b[^,]{3,200}),\s*(?P<subj>.+)$", subject, re.I)
+    if lead:
+        condition = "; ".join(filter(None, [lead.group("cond").strip(), condition]))
+        subject = lead.group("subj").strip()
     rest = _STRIP_TRAIL.sub("", rest)
     # Object: the noun phrase after the first verb group — keep it simple and
     # honest: the first prepositional/object tail after the verb.

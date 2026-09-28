@@ -4,7 +4,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     DATABASE_URL=sqlite:////tmp/clhear.db \
-    CLHEAR_SCOPES_DIR=/tmp/scopes
+    CLHEAR_SCOPES_DIR=/tmp/scopes \
+    CLHEAR_ARTIFACTS_DIR=/tmp/artifacts \
+    CLHEAR_LOCAL_SOURCES_DIR=/sources
 
 WORKDIR /opt/clhear
 

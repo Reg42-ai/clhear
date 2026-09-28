@@ -81,6 +81,8 @@ _CONDITION_CUES: list[tuple[str, str, object]] = [
     (r"\bportfolio management\b|\bmanag(?:es|ing) investments\b", "products", ["portfolio management"]),
     (r"\binvestment advice\b|\badvis(?:es|ing) on investments\b", "products", ["investment advice"]),
     (r"\bcrypto-?assets?\b", "crypto_services", True),
+    (r"\bprocess(?:es|ing)? (?:any )?personal (?:data|information)\b|\bprocessing of personal (?:data|information)\b",
+     "data_footprint", "*"),
     (r"\bdistance\b|\bonline\b|\bwebsite\b|\bmobile app(?:lication)?s?\b|\belectronic means\b|\bdigital channels?\b",
      "channels", ["online and mobile app"]),
     (r"\bintroduc(?:ers?|ing brokers?)\b|\bintermediar(?:y|ies)\b|\bappointed representatives?\b|\btied agents?\b",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clhear"
-version = "0.1.0"
+version = "0.2.0"
 description = "Open engine that turns chosen regulatory sources into a reference compliance blueprint."
 readme = "README.md"
 requires-python = ">=3.12"

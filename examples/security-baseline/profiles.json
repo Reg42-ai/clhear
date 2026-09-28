@@ -1,0 +1,15 @@
+{
+  "payments-startup": {
+    "name": "Payments start-up",
+    "attributes": {
+      "jurisdictions": ["EU"],
+      "data_footprint": "customer names, emails and payment references"
+    }
+  },
+  "research-lab": {
+    "name": "Research lab with no personal data",
+    "attributes": {
+      "jurisdictions": ["EU"]
+    }
+  }
+}

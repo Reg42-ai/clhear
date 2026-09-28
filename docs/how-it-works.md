@@ -1,23 +1,23 @@
 # How CLHEAR works
 
-This page follows one run from texts to blueprint. The [README](../README.md) covers installation and day-to-day use.
+This page follows one run from texts to blueprint, layer by layer, and states the rules each layer applies. The [README](../README.md) covers installation and use.
 
 ## The idea in one paragraph
 
-A regulation is a list of duties hidden in prose. An organisation only has to meet the duties that apply to it, and one well-chosen measure (a process, a control, a record) often meets several duties at once. CLHEAR makes that reduction explicit. It reads the texts, pulls out the duties with a pointer to each clause, filters them by the organisation's facts, and then solves for the **smallest set of measures that covers every applicable duty**. It keeps a proof that nothing in the set is redundant.
+A regulation is a list of duties written as prose. An organisation only has to meet the duties that apply to it, and one well-chosen measure (a process, a record, a role, a system) often meets several duties at once. CLHEAR makes that reduction explicit. It reads the texts, pulls out the duties with a pointer to each clause, decides which apply to the organisation's facts, and chooses a set of measures that covers every applicable duty, with a proof that none of them is redundant.
 
 ## The layers
 
-Each run builds a stack of layers. Every layer reads only the layer or layers below it, and records which input revisions it read. If an input changes after a layer was built, that layer is rebuilt rather than trusted.
+Each run builds a stack of layers for one scope. Every layer reads only the layers below it and records which input revisions it read. If an input changed after it was built, the dependent layer refuses to build rather than trusting stale input. Runs take turns, so two builds never interleave.
 
 ```mermaid
 flowchart TB
-    L1["L1 · Verbatim sources<br/>texts split into clauses, stored as published"]
-    L2["L2 · Obligation registry<br/>one duty per duty-bearing clause"]
-    L3["L3 · Building blocks<br/>measures that can satisfy duties"]
-    L4["L4 · Profile space<br/>which duties apply to which kinds of organisation"]
-    L5["L5 · Activities<br/>what the organisation does, linked to duties and measures"]
-    L6["L6 · Program composer<br/>the blueprint: minimal covering set + explanations"]
+    L1["L1 · Sources<br/>texts split into clauses, kept as read"]
+    L2["L2 · Duties<br/>one per duty-bearing clause"]
+    L3["L3 · Measures<br/>what satisfies each duty"]
+    L4["L4 · Applicability<br/>which duties apply to which organisation"]
+    L5["L5 · Activities<br/>who operates each measure"]
+    L6["L6 · Composer<br/>the blueprint: covering set, proof, explanations"]
     L1 --> L2 --> L3
     L2 --> L4
     L3 --> L5
@@ -25,72 +25,115 @@ flowchart TB
     L5 --> L6
 ```
 
-### L1: Verbatim sources
+### L1: Sources
 
-Each source in the scope is fetched by its **adapter** (`local_text` for pasted text or a file, or a publisher adapter for a URL). The original bytes are kept, the text is split into a tree of nodes and **clauses**, and each clause gets a stable reference (`clause_ref`) and a content hash. Nothing is paraphrased. A readback check compares the stored clauses with the original before the version is accepted.
+Each source is read by its **adapter**:
 
-When a source changes, L1 records a new version and the clause-level difference. Everything above L1 that cited a changed clause is flagged for re-derivation.
+- `local_text` reads pasted text, or a text, HTML or PDF file under `CLHEAR_LOCAL_SOURCES_DIR`.
+- `url` reads a public https page or PDF. Every redirect is checked, and private addresses are refused.
+- Publisher adapters read an official feed: `eur_lex`, `uk_legislation`, `govinfo_us`.
 
-### L2: Obligation registry
+For `local_text` and `url`, the original is rendered to UTF-8 text once. HTML keeps the main content's text blocks, PDF keeps each page's text layer, and plain text is kept as is. The rendering is stored as `source.txt`, with the original's hash and content type recorded beside it.
 
-Every clause that imposes a duty becomes an **obligation** with the id `OBL:{source_key}#{clause_ref}`. The first pass is deterministic: lexical and structural rules decide whether a clause carries a duty, so the same corpus always derives the same registry. The model then triages borderline duties, fills in structure (who must do what, when), and proposes merges of near-duplicates. Each obligation stores the hash of its basis clause.
+The text is split into clauses along its own structure:
 
-### L3: Building blocks
+- **Division headings** (Part, Title, Chapter, Annex, Schedule …) contain units.
+- **Unit headings** (Article, Section, §, Rule, Clause, numbered headings such as `4.1 Context`) own the paragraphs after them. A bare `Article 5` absorbs the title on the next line.
+- **Paragraphs** start at a blank line or at a line that opens with an enumerator (`1.`, `(2)`, `§ 4`). Very long paragraphs are split where a line ends a sentence.
+- **List items** (`(a)`, `(iv)`) nest under the paragraph that introduces them when that paragraph ends with a colon.
 
-A **building block** is a measure an organisation can put in place: a process, a control, a record, a policy. It has the id `BLK-…`. Blocks declare which obligations they satisfy, and those anchors must resolve to live obligations. Near-duplicate blocks are merged. A duty that names a specific measure creates a `requires` edge to that block.
+References are readable and stable: `art-32/1`, `sec-4/b`, `p3`. The same text always gives the same references.
 
-### L4: Profile space
+Before a version is stored, an independent check confirms that every stored node is a run of whole, consecutive lines of `source.txt`, in order, covering all of it. A node that changed a word, dropped a line or reordered text fails the import. When a source changes, L1 stores a new version and the clause-level difference.
 
-L4 turns the **profile** facts (`jurisdictions`, `authorisations`, `products`, `customer_base`, `channels`, `data_footprint`, `crypto_services`, `financial_entity_dora`) into applicability. Each obligation carries an `applies_to` predicate over those facts, and each stored profile is validated against the ontology so impossible combinations are flagged.
+### L2: Duties
+
+A clause is a **duty** when, read with its lead-in (a list item continues the sentence it belongs to), it says someone *must*, *shall*, *is required to*, *is obliged to* or *is prohibited from* doing something. These are excluded:
+
+- **Structure:** clauses under headings such as Definitions, Scope, Entry into force, Repeals or Transitional. Only real heading words count, never words inside a sentence.
+- **Procedure:** proceedings, hearings, appeals, penalties.
+- **Duties of authorities:** a supervisory or competent authority, the Commission, a court, an agency, a minister. A duty that binds the regulator binds nobody in your organisation.
+- **Construction:** "the provisions of … shall not apply", "the term … shall include", "shall be deemed".
+
+Each duty becomes an obligation `OBL:<source>#<clause_ref>` with:
+
+- its sentence: for a list item, "Personal data shall be kept in a form …";
+- its structure: subject, action, condition (the duty's own "where / if / unless" clause) and object;
+- a type: record keeping, reporting, disclosure, security, data protection, risk management, training, governance and so on.
+
+The model then helps in three bounded ways:
+
+- **Triage.** Clauses with weaker wording ("should", "is expected to") are shown to the model. It must quote the words it relied on, verbatim, or the verdict is dropped.
+- **Structure repair.** Where the rules could not split a sentence, the model may, using only words from the clause.
+- **Review.** A second reading marks each derivation correct, incorrect or unsure. Incorrect readings open a proposal for a person to decide.
+
+### L3: Measures
+
+Every duty gets at least one **measure** (`BLK-…`):
+
+- Duties without one are grouped by type and shown to the model in batches. It proposes one concrete measure per batch and may cite only the duties it was shown. A proposal that matches an existing measure's name is linked to that measure instead of creating a near-duplicate.
+- Any duty still without a measure gets one deterministically from its own words, reusing an existing measure of the same kind when the names match.
+- Near-identical measures are merged.
+- Each measure's characteristics (cadence, owner, trigger …) are filled from the duty texts, or marked "not specified by source".
+
+### L4: Applicability
+
+A duty's **conditions** are recorded as edges, each with the words it came from:
+
+| Edge | Comes from | Example |
+| --- | --- | --- |
+| jurisdiction | the source's declared jurisdiction | `{"jurisdictions": "EU"}` |
+| subject | who the text addresses | "the controller" → `{"data_footprint": "*"}` |
+| condition | the duty's own where/if clause | "where an organisation processes personal data" → `{"data_footprint": "*"}` |
+| model | a quoted, closed-world reading, only for duties the rules could not read | |
+
+**The rule:** a duty applies to an organisation when every one of its edges matches the profile. A duty with no edges applies to every organisation. Words elsewhere in a sentence ("online", "consumers") describe the duty; they never narrow it.
+
+`GET /v1/profile-schema` lists the profile fields, what each one changes, and the values this install knows. By default the ontology (jurisdictions, licences, products) comes only from your own sources. `CLHEAR_CURATED_FINANCE=1`, set before the first migration, seeds a reviewed UK/EU/US financial-services ontology instead.
 
 ### L5: Activities
 
-L5 connects duties to what the organisation actually does. Every obligation is mapped to a compliance **activity** (screen, monitor, report, record, train, test, and so on), and activities are linked to the blocks that operate them. Nothing is left unmapped: an obligation with no clear cue maps to the activity that operates the block it requires.
+Every duty is mapped to an **activity** that operates its measure (record, report, notify, train, test, monitor …). Activities give each measure an operator and connect duties that share one. They never decide applicability: that is L4's job alone.
 
-### L6: Program composer, which produces the blueprint
+### L6: Composer, which produces the blueprint
 
-For one profile, the composer:
+For one profile, over the run's scope only:
 
-1. collects the obligations whose applicability predicates match the profile (L4) and whose activities are triggered (L5);
-2. adds every block a duty **requires** (`basis: required`);
-3. runs a greedy **set cover** over the remaining obligations to pick the fewest additional blocks (`basis: selected`), then prunes anything that became redundant;
-4. writes the **minimality proof**: for each item, the obligations only it satisfies and what would become a gap without it;
-5. writes an **explanation** for each item, checked against a fixed rubric.
+1. Every duty in scope gets a verdict from L4: it applies, or it does not and the failed edges are listed.
+2. Every measure an applicable duty **requires** is taken (`basis: required`).
+3. A greedy set cover picks the fewest further measures for the remaining duties (`basis: selected`), and a pruning pass removes any that became redundant.
+4. The **minimality proof** records, for each measure, the duties only it satisfies and what would become a gap without it.
+5. Each measure gets an **explanation** that cites its duties and the profile facts that made them apply.
 
-The composition is a pure function of its inputs: the same profile and the same layers always produce the same blueprint. Blueprints are stored under a `BLU-…` id. A newer blueprint for the same profile supersedes the older one, and nothing is deleted, which is what makes `GET /v1/blueprints/{id}/diff` possible.
-
-Gaps are never hidden. An applicable duty that no block satisfies appears in `coverage` with a state other than `covered`.
-
-### Further layers
-
-The engine also contains **L7 (risk scoring)**, which weighs obligations by linked enforcement outcomes and change velocity, and **L8 (benchmarks)**. They only produce output when the scope includes the kind of sources they read, such as enforcement publications. A typical run needs only L1 to L6.
+The result is a pure function of its inputs: same scope, profile and layers give the same blueprint. Blueprints are stored under `BLU-…` ids. A newer blueprint for the same profile and scope supersedes the older one, and nothing is deleted, which is what makes `diff` possible.
 
 ## Offline sample vs. live run
 
 | | `CLHEAR_LLM_PROVIDER=fake` | `anthropic` / `openai_compatible` / `bedrock` |
 | --- | --- | --- |
-| What runs | A fixed sample derivation, no network | The full L1 to L6 build over your scope |
-| Use it for | Seeing the blueprint shape, CI, tests | Real blueprints |
-| `clhear doctor` | `"live_run": "blocked"`, exit 0 | `"live_run": "ready"` once credentials are set |
+| What runs | A fixed sample: one placeholder duty per source | The full L1 to L6 build over your scope |
+| Use it for | Seeing the blueprint shape | Real blueprints |
+| Blueprint | Marked `"sample": true` | Real |
 
-## Where things are kept
+## Honesty guarantees
 
-- **Database** (`DATABASE_URL`): sources, clauses, derived layers, profiles, runs, releases, webhooks.
-- **Artifacts directory** (`CLHEAR_ARTIFACTS_DIR`): original bytes fetched from publishers.
-- **Scopes directory** (`CLHEAR_SCOPES_DIR`): one YAML file per scope.
-
-Firm identity, existing controls, owners and evidence files are never asked for, and they stay in your own systems.
+- A run where no source produced text fails, and says which source failed and why.
+- A layer where every model call failed (bad key, wrong model, spend cap) fails the run with the last error. Partial failures are counted in the release's `model_calls`.
+- `source.failed` fires only for sources that did not import.
+- Every duty in scope is covered, a gap, or not applicable with a reason. None is dropped.
 
 ## Code map
 
 | Path | What lives there |
 | --- | --- |
-| `app/clhear/cli.py` | The `clhear` command |
-| `app/clhear/api.py` | The `/v1` HTTP API |
-| `app/clhear/runner.py` | Executes one queued run |
-| `app/clhear/scope_build.py` | Builds every layer for one scope |
-| `app/clhear/l1/` … `app/clhear/l8/` | One package per layer |
-| `app/clhear/l1/adapters/` | How each kind of source is read |
-| `app/clhear/curated/` | Reviewed reference data (profile schema, ontology, seed blocks and activities) |
+| `app/clhear/cli.py`, `app/clhear/api.py` | The `clhear` command and the `/v1` HTTP API |
+| `app/clhear/runner.py`, `app/clhear/scope_build.py` | One queued run; the layer-by-layer build of a scope |
+| `app/clhear/l1/adapters/document.py` | Text, HTML and PDF sources: rendering, clause structure, verification |
+| `app/clhear/l2/extract.py` | Duty detection rules |
+| `app/clhear/l3/generate.py`, `l3/decompose.py` | Measures from the model; the deterministic fallback |
+| `app/clhear/l4/predicates.py` | Applicability edges and the applicability rule |
+| `app/clhear/l6/composer.py` | Set cover, minimality proof, blueprint |
+| `app/clhear/platform/gateway.py` | Model providers, retries, spend caps, call ledger |
 | `migrations/` | Numbered schema migrations, applied on startup |
 | `openapi/clhear-v1.yaml` | The API contract, checked against the app in CI |
+| `tests/engine/` | The live path end to end, with a scripted stand-in model |

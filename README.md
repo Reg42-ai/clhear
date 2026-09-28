@@ -1,13 +1,14 @@
 # CLHEAR
 
-**CLHEAR turns the regulatory texts you choose, plus a short description of an organisation, into a compliance blueprint.** The blueprint is the smallest set of measures that covers every duty in those texts that applies to that organisation. Every measure points back to the clause that requires it.
+**CLHEAR turns the regulatory texts you choose, plus a short description of an organisation, into a compliance blueprint.** The blueprint is the set of measures that covers every duty in those texts that applies to that organisation. Every measure points back to the clause that requires it.
 
-A statute is long. A compliance program has to answer a shorter question: *for an organisation of this shape, what must be in place, and which clause says so?* CLHEAR is an open, self-hosted engine for that question.
+A statute is long. A compliance program has to answer a shorter question: *for an organisation of this shape, what must be in place, and which clause says so?* CLHEAR is an open, self-hosted engine for that question. You bring the texts: a law, a regulation, a standard, an internal policy.
 
-- **Traceable.** Every measure names the duty it satisfies, the text it comes from, and the passage inside that text.
-- **Minimal.** A measure stays only if removing it would leave a duty uncovered, and the blueprint carries the proof.
-- **Diffable.** When a text or the organisation changes, you can ask which measures appeared, which dropped, and which duties changed state.
-- **Yours.** CLHEAR ships with **no texts loaded**. You pick the corpus. One install and one database, on a laptop or inside a private network.
+- **Traceable.** Every duty names its source and clause, and every measure names the duties it satisfies.
+- **Accounted for.** Every duty in scope ends up in one of three states. It is covered by a measure, reported as a gap, or listed as not applicable together with the fact it did not meet.
+- **Irredundant.** No measure can be removed without leaving a duty uncovered, and the blueprint carries that proof.
+- **Diffable.** When a text or the organisation changes, you can see which measures appeared, which dropped, and which duties changed state.
+- **Yours.** CLHEAR ships with **no texts loaded**, runs on a laptop or in a private network, and keeps its data in one database.
 
 ---
 
@@ -16,8 +17,9 @@ A statute is long. A compliance program has to answer a shorter question: *for a
 - [How it works](#how-it-works)
 - [The five things you work with](#the-five-things-you-work-with)
 - [Try it in two minutes (offline)](#try-it-in-two-minutes-offline)
-- [Use it on your own texts](#use-it-on-your-own-texts)
+- [Run it on your own texts](#run-it-on-your-own-texts)
 - [Reading a blueprint](#reading-a-blueprint)
+- [Is this blueprint credible? A checklist](#is-this-blueprint-credible-a-checklist)
 - [Comparing blueprints and getting notified](#comparing-blueprints-and-getting-notified)
 - [Command line reference](#command-line-reference)
 - [HTTP API reference](#http-api-reference)
@@ -25,7 +27,7 @@ A statute is long. A compliance program has to answer a shorter question: *for a
 - [What CLHEAR stores, and what it does not](#what-clhear-stores-and-what-it-does-not)
 - [Deploy, pin a version, contribute](#deploy-pin-a-version-contribute)
 
-More detail: [docs/how-it-works.md](docs/how-it-works.md) (the pipeline, layer by layer) and [docs/install.md](docs/install.md) (database, model, container, AWS).
+More detail: [docs/how-it-works.md](docs/how-it-works.md) (each layer, and the rules it applies) and [docs/install.md](docs/install.md) (database, model, container, AWS). A complete walkthrough lives in [examples/security-baseline](examples/security-baseline).
 
 ---
 
@@ -36,253 +38,227 @@ flowchart LR
     S["Sources<br/>(texts you choose)"] --> L1
     P["Profile<br/>(facts about the organisation)"] --> L4
     subgraph run["One run over one scope"]
-        L1["L1 · Read<br/>keep a citable copy,<br/>split into clauses"] --> L2["L2 · Duties<br/>extract obligations,<br/>each pinned to a clause"]
-        L2 --> L3["L3 · Measures<br/>building blocks that<br/>can satisfy duties"]
-        L2 --> L4["L4 · Applicability<br/>which duties apply<br/>to this profile"]
-        L3 --> L5["L5 · Activities<br/>link duties to what<br/>the organisation does"]
+        L1["L1 · Read<br/>keep the text,<br/>split into clauses"] --> L2["L2 · Duties<br/>one per duty-bearing<br/>clause"]
+        L2 --> L3["L3 · Measures<br/>what satisfies<br/>each duty"]
+        L2 --> L4["L4 · Applicability<br/>which duties apply<br/>to this organisation"]
+        L3 --> L5["L5 · Activities<br/>who operates<br/>each measure"]
         L4 --> L5
-        L5 --> L6["L6 · Compose<br/>smallest covering set,<br/>with explanations"]
+        L5 --> L6["L6 · Compose<br/>covering set,<br/>proof, explanations"]
     end
     L6 --> B["Blueprint (JSON)<br/>stored in a release"]
 ```
 
 In plain words, a run:
 
-1. **Reads** every text in the scope and keeps a verbatim, citable copy, split into clauses.
-2. **Finds the duties** in those texts. Each duty is pinned to the exact clause that imposes it.
-3. **Keeps the duties that apply** to the organisation described by the profile.
-4. **Chooses the smallest set of measures** that still covers every applicable duty, then writes down why each one is there.
+1. **Reads** each text in the scope, keeps it verbatim, and splits it into clauses along the text's own structure: parts, articles, sections, numbered paragraphs, list items.
+2. **Finds the duties.** A clause is a duty when it says someone *must*, *shall*, *is required to* or *is prohibited from* doing something. Powers of authorities, definitions and procedure are left out. Weaker wording ("should") goes to the model, which must quote the words it relied on.
+3. **Designs measures.** The model proposes a concrete measure (a process, a record, a role, a system, a policy) for each group of duties. It may only cite duties it was shown.
+4. **Decides what applies.** A duty applies to your organisation when it passes every one of its conditions. These are the jurisdiction of its source, an addressee the text names (for example "the controller"), and the duty's own "where / if" clause. A duty with no conditions applies to everyone.
+5. **Composes the blueprint.** CLHEAR takes every measure a duty requires, then picks the fewest extra measures that cover the rest, removes anything redundant, proves it, and explains each measure with the duties it cites.
 
-Where the model fits: clause text is stored exactly as published, and the model never rewrites it. Duty detection starts from deterministic rules. The model then helps triage and refine duties, design the measures that satisfy them, and word the explanations. Every derived object keeps a pointer back to its clause. The final composition is deterministic set-cover plus a minimality check, so the same inputs always give the same blueprint.
-
-[docs/how-it-works.md](docs/how-it-works.md) walks through each layer.
+Where the model fits: clause text is stored exactly as read and the model never rewrites it. Duty detection, applicability and composition are deterministic rules; the same inputs give the same blueprint. The model triages weak duties, refines duty structure, designs measures and reviews derivations. Every step that uses it records which model answered.
 
 ## The five things you work with
 
 | Object | What it is | Example |
 | --- | --- | --- |
-| **Source** | One text CLHEAR may read: a text you paste, a file on disk, or a URL from a publisher. You give it a short `key`. | `example-source` |
-| **Scope** | A named list of sources that belong in one run. | `example-scope` → `[example-source]` |
-| **Profile** | A handful of facts about the organisation the blueprint is for. The facts decide which duties apply. | `example-profile` |
-| **Run** | One execution over a scope for one or more profiles. It is queued, then a worker picks it up. | `run_…` |
+| **Source** | One text: pasted, a file, or a URL. Give it a short `key`, and a `jurisdiction` if the text is law somewhere specific. | `gdpr` (EU), `iso-controls` (no jurisdiction) |
+| **Scope** | A named list of sources that belong in one program. | `privacy-program` → `[gdpr, dpa-guidance]` |
+| **Profile** | A few facts about the organisation. The facts decide which duties apply. | `acme` → `{"jurisdictions": ["EU"], "data_footprint": "customer records"}` |
+| **Run** | One execution over a scope for one or more profiles. Queued, then run by a worker. | `run_…` |
 | **Release** | The stored result of a finished run: one **blueprint** per profile. | `rel_…` |
 
-A **profile** accepts only these fields. Any other field is rejected:
+**Profile facts.** Only these fields are accepted. `GET /v1/profile-schema` lists them with the values this install knows.
 
-| Field | What it asks |
-| --- | --- |
-| `jurisdictions` | Where the organisation operates or serves people |
-| `authorisations` | Permissions and licences it holds |
-| `products` | What it offers |
-| `customer_base` | Whom it serves |
-| `channels` | How it reaches them |
-| `data_footprint` | The scale of personal data it handles |
-| `crypto_services` | Whether it provides crypto-asset services |
-| `financial_entity_dora` | Whether operational-resilience rules for financial entities apply |
+| Field | What it asks | What it changes |
+| --- | --- | --- |
+| `jurisdictions` | Where the organisation operates | Duties from a source with a jurisdiction apply only if it is listed |
+| `data_footprint` | The personal data it handles, in words | Duties addressed to a controller or processor, or conditional on processing personal data, apply only when set |
+| `authorisations` | Licences and permissions held | Duties addressed to "a firm" or "an authorised person" apply only when at least one is listed |
+| `products` | What it offers | Duties conditional on a product (for example client money or custody) |
+| `customer_base` | Whom it serves | Duties conditional on a client type (retail, professional …) |
+| `channels` | How it reaches them | Duties conditional on a channel (online, intermediaries …) |
+| `crypto_services` | `true` / `false` | Duties about crypto-assets |
+| `financial_entity_dora` | `true` / `false` | Duties addressed to "financial entities" |
 
-These facts describe the *kind* of organisation. They are not a record of the controls it already runs. See [examples/profile.json](examples/profile.json) and [examples/scope.yaml](examples/scope.yaml).
+Profiles describe the *kind* of organisation, never its people, controls or evidence.
 
 ## Try it in two minutes (offline)
 
-You need Python 3.12. This runs entirely on your machine. It reads one placeholder sentence and uses a stand-in model (`fake`), so you can see the shape of a blueprint before you connect a real model.
+Python 3.12. This runs entirely on your machine with a stand-in model (`fake`) and writes a **sample** blueprint (marked `"sample": true`) so you can see the shape before connecting a real model.
 
 ```bash
-pip install "clhear @ git+https://github.com/Reg42-ai/clhear.git@v0.1.0"
+pip install "clhear @ git+https://github.com/Reg42-ai/clhear.git"
 
 export CLHEAR_LLM_PROVIDER=fake
 clhear init         # creates an empty ./scopes directory
 clhear doctor       # checks the database and the model
 clhear quickstart   # writes a sample source, scope and profile, then runs them
+clhear export --release <release_id from quickstart> --profile example-profile
 ```
 
-`doctor` prints `"live_run": "blocked"` with the `fake` provider. That is expected: the sample finishes, and a run over real texts waits until you configure a model.
+`doctor` prints `"live_run": "blocked"` with `fake`. That is expected: the sample never reads a real text.
 
-`quickstart` prints something like:
+## Run it on your own texts
 
-```json
-{
-  "run_id": "run_93b5a9ae3fb646a7b615cc48ddde134a",
-  "release_id": "rel_652ab178b9274a43",
-  "blueprint_id": "BLU-000001",
-  "items": 1,
-  "coverage": 1
-}
-```
+### 1. Connect a model
 
-Print the blueprint:
+| `CLHEAR_LLM_PROVIDER` | Also set | Default model |
+| --- | --- | --- |
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-5` |
+| `openai_compatible` | `OPENAI_BASE_URL`, `OPENAI_API_KEY` | `gpt-4o` |
+| `bedrock` | `BEDROCK_MODEL_ID` (or `CLHEAR_LLM_MODEL`) and AWS credentials | none |
+
+`CLHEAR_LLM_MODEL` picks another model. For Claude, `CLHEAR_LLM_EFFORT` (`low` … `max`, default `medium`) sets how hard the model thinks. On Claude Opus 5 a request the model declines is retried on a fallback model server-side; set `CLHEAR_LLM_FALLBACKS=false` to turn that off.
 
 ```bash
-clhear export --release rel_652ab178b9274a43 --profile example-profile
+export CLHEAR_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-...
+clhear doctor --check-model     # makes one small real call; exits non-zero on a bad key or model
 ```
 
-## Use it on your own texts
-
-### 1. Configure a model
-
-Reading real texts calls a language model. Pick one provider:
-
-| `CLHEAR_LLM_PROVIDER` | Also set |
-| --- | --- |
-| `anthropic` | `ANTHROPIC_API_KEY` |
-| `openai_compatible` | `OPENAI_BASE_URL` and `OPENAI_API_KEY` |
-| `bedrock` | `BEDROCK_MODEL_ID` or `CLHEAR_LLM_MODEL`, and your AWS credentials |
-
-`CLHEAR_LLM_MODEL` optionally chooses the model name. Run `clhear doctor` and wait for `"live_run": "ready"`. With no provider set, `doctor` exits non-zero. With `fake`, `clhear run` and the worker keep producing the offline sample blueprint.
-
-If any source is a URL, also set `CLHEAR_HTTP_MODE=live` so the engine fetches from the publisher. The default mode, `replay`, only reads recorded test fixtures.
-
-### 2. Start the API and the worker
-
-Two processes share one database. The API accepts work, and the worker does the reading and composing.
+### 2. Start the API and a worker
 
 ```bash
 clhear serve     # HTTP API on http://127.0.0.1:8000
-clhear worker    # picks up queued runs
+clhear worker    # runs queued builds
 ```
 
-On `127.0.0.1` the API accepts calls without a token. To bind any other address, set `CLHEAR_SERVICE_TOKENS` (comma-separated, so you can rotate) or `CLHEAR_SERVICE_TOKEN_FILE`, and send `Authorization: Bearer <token>`. `clhear serve` refuses to start on a public bind without a token.
+On `127.0.0.1` the API needs no token. To bind anything else, set `CLHEAR_SERVICE_TOKENS` (comma-separated, so you can rotate) or `CLHEAR_SERVICE_TOKEN_FILE`, and send `Authorization: Bearer <token>`.
 
-### 3. Register sources
-
-```bash
-curl -s -X POST localhost:8000/v1/sources \
-  -H 'content-type: application/json' \
-  -d '{
-    "key": "example-source",
-    "adapter": "local_text",
-    "name": "Example source",
-    "kind": "guidance",
-    "licence": "open",
-    "locator": {"text": "An organisation must keep a record of each decision and the reason for it."}
-  }'
-```
-
-`adapter` says how the text is read, and `locator` says where it is:
+### 3. Register sources, and check what CLHEAR read
 
 | You have | `adapter` | `locator` |
 | --- | --- | --- |
-| Text to paste | `local_text` | `{"text": "…"}` |
-| A file on the server | `local_text` | `{"path": "/data/policy.txt"}` |
-| A publisher page or PDF | a publisher adapter (list: `GET /v1/adapters`) | `{"url": "https://…"}` |
-
-Before a run, `POST /v1/sources/{key}/test-fetch` checks that a source can be read. It returns a version and a node count, and it writes nothing.
-
-### 4. Name the scope
+| Text to paste | `local_text` | `{"text": "…"}` (add `"format": "html"` for pasted HTML) |
+| A text, HTML or PDF file | `local_text` | `{"path": "gdpr.pdf"}`, relative to `CLHEAR_LOCAL_SOURCES_DIR` (default `./sources`) |
+| A public web page or PDF | `url` | `{"url": "https://…"}` (https only; private addresses are refused) |
+| An EU act, a UK act, US Code / eCFR | `eur_lex`, `uk_legislation`, `govinfo_us` | see `GET /v1/adapters` |
 
 ```bash
-curl -s -X POST localhost:8000/v1/scopes \
-  -H 'content-type: application/json' \
-  -d '{"name": "example-scope", "label": "Example scope", "sources": ["example-source"]}'
+curl -s -X POST localhost:8000/v1/sources -H 'content-type: application/json' -d '{
+  "key": "baseline", "adapter": "local_text", "name": "Security baseline",
+  "jurisdiction": "EU", "locator": {"path": "baseline.txt"}}'
+
+curl -s -X POST localhost:8000/v1/sources/baseline/test-fetch
+# {"clauses": 16, "preview": [{"clause_ref": "sec-1", "text": "Section 1. Every organisation shall appoint …"}, …]}
 ```
 
-Scopes are stored as YAML files in `scopes/` (or `CLHEAR_SCOPES_DIR`). You can also write the file yourself: startup loads whatever is there.
+`test-fetch` reads the source with the real adapter and writes nothing. Look at the preview: those `clause_ref`s are what every blueprint will cite. A scanned PDF has no text layer; run OCR first.
 
-### 5. Describe the organisation
+### 4. Name the scope and describe the organisation
 
 ```bash
-curl -s -X PUT localhost:8000/v1/profiles/example-profile \
-  -H 'content-type: application/json' \
-  -d '{"name": "Example organisation", "attributes": {"jurisdictions": [], "channels": []}}'
+curl -s -X POST localhost:8000/v1/scopes -H 'content-type: application/json' \
+  -d '{"name": "security-baseline", "sources": ["baseline"]}'
+
+curl -s -X PUT localhost:8000/v1/profiles/payments-startup -H 'content-type: application/json' \
+  -d '{"name": "Payments start-up", "attributes": {"jurisdictions": ["EU"], "data_footprint": "customer names and emails"}}'
+# the response includes "validation": {"valid": true, "errors": [], "warnings": []}
 ```
 
-`clhear validate profile.json` checks a profile file before you send it.
-
-### 6. Start a run and fetch the blueprint
+### 5. Run, then read the blueprint
 
 ```bash
-curl -s -X POST localhost:8000/v1/runs \
-  -H 'content-type: application/json' \
-  -d '{"scope": "example-scope", "profiles": ["example-profile"]}'
-# → {"run_id": "run_…", "status": "queued", …}
+curl -s -X POST localhost:8000/v1/runs -H 'content-type: application/json' \
+  -d '{"scope": "security-baseline", "profiles": ["payments-startup"]}'
+# {"run_id": "run_…", "status": "queued"}
 ```
 
-Poll `GET /v1/runs/{run_id}` until `"status": "succeeded"` (or `"failed"`, with an `error`). `GET /v1/runs/{run_id}/logs` shows progress. The finished run carries a `release_id`:
+Poll `GET /v1/runs/{run_id}` until `"status"` is `"succeeded"` or `"failed"` (a failed run carries its reason in `error`, for example which source could not be read). Then:
 
 ```bash
-curl -s localhost:8000/v1/releases/$RELEASE_ID/blueprints/example-profile
+curl -s localhost:8000/v1/releases/$RELEASE_ID/blueprints/payments-startup
 ```
 
-The same run from the command line, once the source, scope and profile exist:
+The same run from the command line, once source, scope and profile exist: `clhear run --scope security-baseline --profile-id payments-startup`.
 
-```bash
-clhear run --scope example-scope --profile-id example-profile
-```
+[examples/security-baseline/run.sh](examples/security-baseline/run.sh) does all of this for one text and two organisations, and prints both blueprints.
 
 ## Reading a blueprint
 
-A blueprint is JSON. The three parts you will use most:
-
-- **`items`**: the measures in the program. Each has a `name`, a `basis`, and an `explanation` in sentences. The `basis` is `required` when a duty names that specific measure, or `selected` when the composer picked it as the cheapest way to cover remaining duties.
-- **`coverage`**: every duty that applies. `source_key` says which text, `clause_ref` says where in that text, and `state` is `covered` when at least one measure satisfies the duty. Anything else is a gap, and gaps are reported rather than hidden.
-- **`minimality`**: `checked` and `minimal`. The proof lists which duties would open up if a measure were removed.
-
-For the placeholder text *"keep a record of each decision"*:
-
 ```json
 {
+  "scope": {"name": "security-baseline", "source_keys": ["baseline"]},
   "items": [
     {
-      "name": "Decision record",
+      "name": "Access review procedure",
       "basis": "required",
-      "explanation": "Decision record (Process BLK-DECLARED-RECORD) is required by OBL:example-source#clause-1. It satisfies 1 applicable obligation(s): OBL:example-source#clause-1."
+      "obligations_satisfied": ["OBL:baseline#sec-4/b", "OBL:baseline#sec-4/c"],
+      "explanation": "Access review procedure (Process BLK-…) is required by OBL:baseline#sec-4/b, …"
     }
   ],
   "coverage": [
     {
-      "source_key": "example-source",
-      "clause_ref": "clause-1",
-      "title": "Keep a record of the decision",
-      "state": "covered"
+      "source_key": "baseline", "clause_ref": "sec-4/b",
+      "duty": "Every organisation shall review user access rights at least every six months.",
+      "state": "covered", "satisfied_by": ["BLK-…"]
     }
   ],
-  "minimality": { "checked": true, "minimal": true }
+  "not_applicable": [
+    {"source_key": "baseline", "clause_ref": "sec-5",
+     "because": [{"requires": {"data_footprint": "*"}, "basis": "condition",
+                  "rationale": "condition: 'processes personal data'"}]}
+  ],
+  "coverage_summary": {"covered": 9, "gaps": 0, "total": 9, "not_applicable": 1},
+  "minimality": {"checked": true, "minimal": true}
 }
 ```
 
-The ids inside `explanation` are stable handles: `OBL:…` is a duty and `BLK-…` is a measure. `coverage` is the human-readable pointer to the text and passage.
+- **`items`**: the measures. `basis` is `required` when a duty calls for that measure, and `selected` when the composer chose it to cover remaining duties. `obligations_satisfied` lists the duties it answers.
+- **`coverage`**: every duty that applies, with its sentence (`duty`), where it comes from (`source_key`, `clause_ref`), and its `state`: `covered`, or `gap` when no measure satisfies it yet.
+- **`not_applicable`**: every duty in scope that does not apply to this profile, and the condition it failed.
+- **`minimality`**: `minimal: true` means no measure can be removed without opening a gap. The full proof is in `proof`.
+
+Duty ids (`OBL:<source>#<clause_ref>`) and measure ids (`BLK-…`) are stable.
+
+## Is this blueprint credible? A checklist
+
+1. **The text was read as you expect.** `test-fetch` shows clause refs that match the document's own numbering.
+2. **Nothing failed silently.** The release lists `failed_sources` (should be empty). Each layer reports `model_calls` with `ok` and `failed`, and a layer where every model call failed fails the run.
+3. **Every duty has a state.** `coverage_summary.total + not_applicable` equals the duties found in the scope. Gaps are shown, not hidden.
+4. **Not-applicable has a reason** you can check against the profile.
+5. **Spot-check a few duties** against the clause text they cite. The duty sentence is taken from the clause, not generated.
+6. **Treat measures as proposals.** Measure names and groupings come from the model; the duties they cite and the proof that they cover them are mechanical. A person should review the program before it is adopted.
 
 ## Comparing blueprints and getting notified
 
-**Diff.** Compare any two blueprints, for example before and after a text changed:
+**Diff:** `GET /v1/blueprints/{blueprint_id}/diff?against={other_id}` shows measures added or dropped and duties that changed state.
 
-```bash
-curl -s "localhost:8000/v1/blueprints/$BLUEPRINT_ID/diff?against=$OTHER_ID"
-```
-
-**Webhooks.** Register a URL and a secret with `POST /v1/webhooks`. Each delivery sets `X-CLHEAR-Event` and `X-CLHEAR-Signature: sha256=<HMAC-SHA256 of the body with your secret>`. Events: `run.started`, `run.finished`, `run.failed`, `source.failed`, `release.published`, `blueprint.changed`. A failed delivery never fails the run.
+**Webhooks:** register a URL and secret with `POST /v1/webhooks`. Deliveries carry `X-CLHEAR-Event` and `X-CLHEAR-Signature: sha256=<HMAC-SHA256 of the body>`. Events: `run.started`, `run.finished`, `run.failed`, `source.failed`, `release.published`, `blueprint.changed`. A failed delivery never fails the run.
 
 ## Command line reference
 
 | Command | What it does |
 | --- | --- |
 | `clhear init` | Create the empty `scopes/` directory |
-| `clhear doctor` | Check the database and whether a live model is configured |
+| `clhear doctor [--check-model]` | Check the database and model configuration; optionally make one real model call |
 | `clhear migrate` | Apply database migrations (other commands also do this on first use) |
-| `clhear version` | Print the engine tag, e.g. `v0.1.0` |
+| `clhear version` | Print the engine tag |
 | `clhear quickstart` | Write and run the offline sample |
 | `clhear serve [--host --port]` | Serve the HTTP API |
 | `clhear worker [--once] [--poll SECONDS]` | Process queued runs |
 | `clhear run --scope S --profile-id P [--queue-only]` | Run a scope for stored profiles and store the release |
 | `clhear build --scope S [--profile FILE]` | Build every layer for a scope and print the layer report |
-| `clhear compose --profile P` | Compose a blueprint for a stored profile from what is already built |
+| `clhear compose --profile P` | Compose a blueprint for a stored engine profile from what is already built |
 | `clhear export --release R --profile P [--out FILE]` | Write one blueprint as JSON |
 | `clhear release --release R [--out DIR]` | Write a whole stored release to a directory |
 | `clhear validate FILE [--contribution]` | Check a profile or a contribution proposal |
 
 ## HTTP API reference
 
-The full contract is [openapi/clhear-v1.yaml](openapi/clhear-v1.yaml). Summary:
+The full contract is [openapi/clhear-v1.yaml](openapi/clhear-v1.yaml).
 
 | Method and path | Purpose |
 | --- | --- |
-| `GET /v1/health`, `GET /v1/version` | Liveness; engine, API and schema versions and the image digest |
-| `GET /v1/adapters` | Adapters available for sources |
+| `GET /v1/health`, `GET /v1/version` | Liveness; engine, API and schema versions |
+| `GET /v1/adapters` | What can be registered as a source, and the locator each adapter needs |
 | `GET/POST /v1/sources`, `GET/PUT/DELETE /v1/sources/{key}` | Manage sources |
-| `POST /v1/sources/{key}/test-fetch` | Check a source can be read, without storing anything |
+| `POST /v1/sources/{key}/test-fetch` | Read a source with its adapter and preview its clauses; stores nothing |
 | `GET/POST /v1/scopes`, `GET /v1/scopes/{name}` | Manage scopes |
-| `GET/PUT /v1/profiles/{profile_id}` | Manage profiles |
+| `GET /v1/profile-schema` | Profile fields, what each changes, and known values |
+| `GET/PUT /v1/profiles/{profile_id}` | Manage profiles; `PUT` returns validation errors and warnings |
 | `POST /v1/runs`, `GET /v1/runs/{run_id}`, `GET /v1/runs/{run_id}/logs` | Start and follow runs |
-| `GET /v1/releases/{release_id}` | A stored release |
+| `GET /v1/releases/{release_id}` | A stored release, with per-layer counts, model calls and failed sources |
 | `GET /v1/releases/{release_id}/blueprints/{profile_id}` | One blueprint in a release |
 | `GET /v1/blueprints/{blueprint_id}`, `GET /v1/blueprints/{blueprint_id}/diff?against=…` | A blueprint by id, and the difference between two |
 | `GET/POST /v1/webhooks`, `DELETE /v1/webhooks/{webhook_id}` | Manage notifications |
@@ -293,39 +269,43 @@ The full contract is [openapi/clhear-v1.yaml](openapi/clhear-v1.yaml). Summary:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | `sqlite:///./clhear.db` | SQLite file or `postgresql+psycopg://…` |
-| `CLHEAR_SCOPES_DIR` | `scopes` | Where scope files live |
 | `CLHEAR_LLM_PROVIDER` | unset | `anthropic`, `openai_compatible`, `bedrock` or `fake` |
 | `CLHEAR_LLM_MODEL` | provider default | Model name |
+| `CLHEAR_LLM_EFFORT` | `medium` | Claude reasoning effort: `low`, `medium`, `high`, `xhigh`, `max` |
+| `CLHEAR_LLM_FALLBACKS` | `true` | Server-side refusal fallbacks on Claude Opus 5 / Fable |
 | `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `BEDROCK_MODEL_ID` | unset | Provider credentials |
-| `CLHEAR_HTTP_MODE` | `replay` | Set `live` to fetch URL sources from publishers |
-| `CLHEAR_ARTIFACTS_DIR` | `./artifacts` | Where fetched originals are kept |
+| `CLHEAR_LOCAL_SOURCES_DIR` | `./sources` | Where `local_text` `path` sources are read from (nothing outside it) |
+| `CLHEAR_ALLOW_PRIVATE_URLS` | unset | Set `1` to let `url` sources reach private addresses |
+| `CLHEAR_HTTP_MODE` | `replay` | Set `live` for the publisher adapters (`eur_lex`, `uk_legislation`, `govinfo_us` …); `url` sources always fetch live |
+| `CLHEAR_SCOPES_DIR` | `scopes` | Where scope files live |
+| `CLHEAR_ARTIFACTS_DIR` | `./artifacts` | Where read texts are kept |
+| `CLHEAR_CURATED_FINANCE` | unset | Set `1` before the first migration to seed the reviewed UK/EU/US financial-services ontology |
 | `CLHEAR_BIND_HOST`, `CLHEAR_PORT` | `127.0.0.1`, `8000` | Where `serve` listens |
 | `CLHEAR_SERVICE_TOKENS`, `CLHEAR_SERVICE_TOKEN_FILE` | unset | Bearer tokens, required off loopback |
 
+**Model spend is capped** at $20 per layer per day (`CLHEAR_GATEWAY_FLEET_DAILY_CAP_USD`) and $100 per day overall (`CLHEAR_GATEWAY_GLOBAL_DAILY_CAP_USD`). A short standard costs cents to a few dollars; a long regulation with hundreds of duties can reach the per-layer cap. Raise the caps before such a run, or use a lower `CLHEAR_LLM_EFFORT`. A capped call counts as a failed model call in the layer report, and a layer where every call failed fails the run, so a cap never produces a silently thin blueprint.
+
 ## What CLHEAR stores, and what it does not
 
-The database holds the texts you supplied, the duties derived from them, the organisation description used to select those duties, and the releases. Firm identity, the controls already in operation, owners, and evidence files stay in your own systems.
+The database holds the texts you supplied (as read), the duties and measures derived from them, the profiles you submitted, and the releases. Firm identity, the controls you already run, owners and evidence stay in your own systems.
 
 ## Deploy, pin a version, contribute
 
-**Install a tag.** `main` moves.
+**Install:** `pip install "clhear @ git+https://github.com/Reg42-ai/clhear.git@vX.Y.Z"` pins a release; without `@…` you get `main`.
 
-```bash
-pip install "clhear @ git+https://github.com/Reg42-ai/clhear.git@v0.1.0"
-clhear version   # v0.1.0
-```
+**Containers** are published as `ghcr.io/reg42-ai/clhear` (`linux/amd64`, `linux/arm64`) for each release tag. Mount your files at `/sources`. Postgres, the container and an optional private AWS task are covered in [docs/install.md](docs/install.md). Changes per version: [CHANGELOG.md](CHANGELOG.md).
 
-**Containers** are published as `ghcr.io/reg42-ai/clhear` for `linux/amd64` and `linux/arm64`. Pin the digest from the release manifest. Postgres, the container, and an optional private AWS task are covered in [docs/install.md](docs/install.md).
-
-**Contributing.** Pull requests are welcome under the [contributor terms](CONTRIBUTING.md). Before you push, run the same checks as CI:
+**Contributing.** Pull requests are welcome under the [contributor terms](CONTRIBUTING.md). Run the same checks as CI:
 
 ```bash
 pip install -e ".[dev]"
 ruff check .
 python -m app.clhear.denylist
 python -m app.clhear.openapi_doc --check
-python -m pytest tests/contract -q
+python -m pytest tests -q
 ```
+
+The engine tests run the whole live path (HTTP API, worker, every layer) against a scripted stand-in model, so they need no key and no network.
 
 **Security issues:** see [SECURITY.md](SECURITY.md).
 

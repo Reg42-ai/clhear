@@ -323,6 +323,8 @@ def create_app() -> FastAPI:
             "scope": row["scope"],
             "run_id": row["run_id"],
             "layers": body.get("layers") or {},
+            "sources": body.get("sources") or {},
+            "failed_sources": body.get("failed_sources") or [],
             "profiles": sorted((body.get("profiles") or {}).keys()),
             "created_at": _iso(row["created_at"]),
         }
@@ -424,6 +426,7 @@ def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> di
         "coverage_summary": composition.get("coverage_summary") or {},
         "not_applicable": composition.get("not_applicable") or [],
         "scope": composition.get("scope"),
+        **({"sample": True} if composition.get("sample") else {}),
         "engine_version": composition.get("engine_version"),
     }
 
