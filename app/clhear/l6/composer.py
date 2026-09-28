@@ -76,13 +76,50 @@ def _l4_applicable(conn, attributes: dict) -> list[dict]:
         return []
 
 
+def _duty_quote(ob: dict) -> dict | None:
+    found = _json(ob.get("evidence"), {}) or {}
+    return found.get("duty") if isinstance(found, dict) else None
+
+
+def _triggers(ob: dict) -> list[dict]:
+    """The duty's conditions that time it rather than decide whether it applies."""
+    from app.clhear.l4.predicates import conditions_of
+
+    _, triggers = conditions_of({**ob, "evidence": _json(ob.get("evidence"), {}) or {}})
+    return [{"text": t["text"], "evidence": t["quotes"]} for t in triggers]
+
+
+def _edge_view(e: dict) -> dict:
+    return {"requires": e["predicate"], "basis": e["basis"], "rationale": e["rationale"],
+            "evidence": _json(e.get("evidence"), {}) or {}}
+
+
 def _verdict_item(verdict: dict) -> dict:
     ob, es = verdict["obligation"], verdict["edges"]
     return {"derivation_key": ob["id"], "obligation_id": ob.get("stable_id") or ob["id"], "source_key": ob["source_key"],
             "clause_ref": ob["clause_ref"], "title": ob["title"], "status": ob["status"],
             "confidence": float(ob.get("confidence") or 0),
             "duty": ob.get("determination") or ob.get("statement") or "",
+            "evidence": _duty_quote(ob), "triggers": _triggers(ob),
             "predicates": [{"predicate": e["predicate"], "basis": e["basis"], "rationale": e["rationale"]} for e in es]}
+
+
+def _question(e: dict) -> dict:
+    """What a profile must answer to decide one open edge."""
+    pred, found = e["predicate"] or {}, _json(e.get("evidence"), {}) or {}
+    if "jurisdictions" in pred:
+        return {"key": "jurisdictions", "ask": "Where do you operate?", "value": pred["jurisdictions"],
+                "evidence": [found["source"]] if found.get("source") else []}
+    if "roles" in pred:
+        labels = found.get("labels") or {}
+        names = [labels.get(r, r) for r in pred["roles"]]
+        return {"key": "roles", "ask": "Are you " + " or ".join(f"'{n}'" for n in names) + "?", "value": pred["roles"],
+                "evidence": found.get("subject") or []}
+    if "condition" in pred:
+        return {"key": "conditions", "id": pred["condition"], "ask": f"Does this hold for you: {e['rationale']}?",
+                "value": pred.get("fact"), "evidence": found.get("condition") or []}
+    return {"key": "retired", "ask": "This duty carries an applicability edge from an earlier version; rebuild the scope.",
+            "value": pred, "evidence": []}
 
 
 def resolve_anchor_in(conn: Connection, anchor: dict) -> list[dict]:
@@ -127,8 +164,9 @@ def _live_characteristics(conn) -> dict[str, list[dict]]:
         return out
     for r in rows:
         out.setdefault(r["block_id"], []).append(
-            {"key": r["key"], "value": r["value"], "status": r["status"],
-             "backing_obligation_id": r["backing_obligation_id"], "backing_span": r["backing_span"] or ""})
+            {"id": r["id"], "key": r["key"], "value": r["value"], "status": r["status"],
+             "backing_obligation_id": r["backing_obligation_id"], "backing_span": r["backing_span"] or "",
+             "evidence": ((_json(r.get("evidence"), {}) or {}).get("value") or [])})
     return out
 
 
@@ -266,17 +304,22 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
     blocks_by_id = {b["id"]: b for b in block_rows}
     activities_by_id = {a["id"]: a for a in activity_rows}
 
+    withheld = set(profile.get("withheld") or ())
+    if verdicts is not None and withheld:
+        verdicts = {oid: v for oid, v in verdicts.items() if oid not in withheld}
+        l4_applicable = [i for i in l4_applicable if i["derivation_key"] not in withheld]
     triggered: dict[str, dict] = {}  # obligation id -> {obligation, activities, conditions}
     unresolved_anchors: list[dict] = []
     # L4 applicability edges trigger directly (every edge matched the profile).
     for item in l4_applicable:
         ob = {"id": item["derivation_key"], "source_key": item["source_key"], "clause_ref": item["clause_ref"],
               "title": item["title"], "status": item["status"], "confidence": item["confidence"],
-              "stable_id": item["obligation_id"], "duty": item.get("duty", "")}
+              "stable_id": item["obligation_id"], "duty": item.get("duty", ""), "evidence": item.get("evidence"),
+              "triggers": item.get("triggers") or []}
         slot = triggered.setdefault(ob["id"], {"obligation": ob, "activities": [], "conditions": []})
         slot["activities"].append("L4:applies_to")
         slot["conditions"].append({k: v for p in item["predicates"] for k, v in p["predicate"].items()})
-    for act in activity_rows:
+    for act in activity_rows if verdicts is None else ():
         if wanted_activities is not None and act["id"] not in wanted_activities:
             continue
         if act.get("valid_to") is not None:
@@ -303,11 +346,13 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
     required: dict[str, list[dict]] = {}
     for oid, slot in triggered.items():
         ob = slot["obligation"]
-        cands = [b for b in block_rows if b.get("valid_to") is None and not b.get("canonical_id")
-                 and any(_selector_covers(sel, ob) for sel in b["satisfies"])]
+        # A scope's blueprint uses only its derived requires edges; selectors are a pre-0.2 catalog's.
+        cands = [] if verdicts is not None else [
+            b for b in block_rows if b.get("valid_to") is None and not b.get("canonical_id")
+            and any(_selector_covers(sel, ob) for sel in b["satisfies"])]
         for edge in requires_edges.get(oid, ()):
             b = _canonical(blocks_by_id, blocks_by_id.get(edge["block_id"]))
-            if b is None:
+            if b is None or b["id"] in withheld:
                 continue
             required.setdefault(oid, []).append({**edge, "block_id": b["id"]})
             if b["id"] not in {c["id"] for c in cands}:
@@ -330,6 +375,8 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                 "clause_ref": ob["clause_ref"],
                 "title": ob["title"],
                 "duty": ob.get("duty") or "",
+                "evidence": ob.get("evidence"),
+                "triggers": ob.get("triggers") or [],
                 "status": ob["status"],
                 "confidence": float(ob["confidence"] or 0),
                 "triggered_by": slot["activities"],
@@ -352,6 +399,8 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
         load_bearing = sorted(set(required_for) | set(only_here))
         resolved_chars = []
         for ch in chars.get(bid, []):
+            if f"characteristic:{ch['id']}" in withheld:
+                continue
             backing = ch["backing_obligation_id"]
             resolved_chars.append({**ch, "in_profile": backing is None or backing in triggered or ch["status"] != "backed"})
         items.append(
@@ -362,6 +411,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                 "purpose": b.get("purpose") or "",
                 "capability": b.get("capability") or "",
                 "status": b.get("status"),
+                "evidence": _json(b.get("evidence"), {}) or {},
                 "basis": "required" if required_for else "selected",
                 "obligations_satisfied": satisfied,
                 "required_by": required_for,
@@ -370,7 +420,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                 "activities_operated": [
                     {"activity_id": o["activity_id"], "name": o["name"],
                      "obligation_refs": [r for r in o["obligation_refs"] if r in by_oid or r in {c.get("stable_id") for c in coverage}]}
-                    for o in operated.get(bid, [])
+                    for o in operated.get(bid, []) if o["activity_id"] not in withheld
                 ],
                 "evidence_artifacts": b["evidence_artifacts"],
                 "triggered_by": sorted({a for oid in satisfied for a in by_oid[oid]["triggered_by"]}),
@@ -424,17 +474,24 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                          "clause_ref": row.clause_ref, "title": row.title}
                     )
 
-    not_applicable = []
+    not_applicable, undetermined = [], []
+    questions: dict[str, dict] = {}
     for oid, verdict in sorted((verdicts or {}).items()):
-        if verdict["applies"]:
-            continue
         ob = verdict["obligation"]
-        not_applicable.append({
-            "obligation_id": oid, "stable_id": ob.get("stable_id"), "source_key": ob["source_key"],
-            "clause_ref": ob["clause_ref"], "title": ob["title"],
-            "because": [{"requires": e["predicate"], "basis": e["basis"], "rationale": e["rationale"]}
-                        for e in verdict["failed"]],
-        })
+        head = {"obligation_id": oid, "stable_id": ob.get("stable_id"), "source_key": ob["source_key"],
+                "clause_ref": ob["clause_ref"], "title": ob["title"], "duty": ob.get("determination") or "",
+                "evidence": _duty_quote(ob)}
+        if verdict.get("state") == "not_applicable":
+            not_applicable.append({**head, "because": [_edge_view(e) for e in verdict["failed"]]})
+        elif verdict.get("state") == "undetermined":
+            asked = [_question(e) for e in verdict["open"]]
+            undetermined.append({**head, "questions": asked})
+            for q in asked:
+                key = json.dumps({k: q.get(k) for k in ("key", "id", "value")}, sort_keys=True, default=str)
+                slot = questions.setdefault(key, {**q, "duties": []})
+                slot["duties"].append(ob.get("stable_id") or oid)
+    open_questions = sorted(questions.values(), key=lambda q: (q["key"], -len(q["duties"]), str(q["value"])))
+    gaps = _evidence_gaps(conn, scope_name, coverage, items, verdicts) if verdicts is not None else []
     states = [c["state"] for c in coverage]
     program = {}
     for it in items:
@@ -462,14 +519,38 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
             "gaps": states.count("gap"),
             "total": len(states),
             "not_applicable": len(not_applicable),
+            "undetermined": len(undetermined),
         },
         "not_applicable": not_applicable,
+        "undetermined": undetermined,
+        "open_questions": open_questions,
+        "evidence_gaps": gaps,
         "unresolved_anchors": unresolved_anchors,
         "unmapped_obligations": {"count": unmapped_count, "sample": unmapped_sample,
                                  "note": "derived obligations in your jurisdictions not yet mapped to any activity — visible by design"},
     }
     result["composition_hash"] = composition_hash(result)
     return result
+
+
+def _evidence_gaps(conn: Connection, scope_name: str | None, coverage: list[dict], items: list[dict],
+                   verdicts: dict) -> list[dict]:
+    """What the texts in scope could not support for this blueprint, and which
+    sources would. Only gaps about duties that apply or may apply, the measures
+    chosen, and the scope as a whole are shown."""
+    from app.clhear import evidence
+
+    relevant = {oid for oid, v in verdicts.items() if v.get("state") != "not_applicable"}
+    chosen = {it["block_id"] for it in items}
+    out = []
+    for gap in evidence.gaps_for(conn, scope_name or "") if scope_name else []:
+        subject = gap["subject"]
+        if subject.startswith("OBL:") and subject not in relevant:
+            continue
+        if gap["kind"] == "characteristic_unspecified" and subject.split(":", 1)[0] not in chosen:
+            continue
+        out.append(gap)
+    return out
 
 
 # ----------------------------------------------------------------- persistence (I2: supersede, never delete)
@@ -546,7 +627,7 @@ def store_blueprint(conn: Connection, result: dict, profile: dict, *, requested_
 
 
 def compose_for_profile(engine: Engine, profile_id: str, *, requested_by: str = "l6.compose", release: str = "",
-                        log_request: bool = True) -> dict:
+                        log_request: bool = True, withheld=None) -> dict:
     """Compose for a stored L4 profile (``PRF-``); raises KeyError when unknown."""
     from app.clhear.l4 import validate as l4_validate
 
@@ -555,7 +636,8 @@ def compose_for_profile(engine: Engine, profile_id: str, *, requested_by: str = 
     if row is None:
         raise KeyError(profile_id)
     attributes = _json(row["attributes"], {})
-    return compose(engine, {"attributes": attributes, "activities": None, "profile_id": profile_id},
+    return compose(engine, {"attributes": attributes, "activities": None, "profile_id": profile_id,
+                            "withheld": sorted(withheld or ())},
                    requested_by=requested_by, release=release, log_request=log_request)
 
 

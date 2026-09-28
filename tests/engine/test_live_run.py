@@ -82,9 +82,9 @@ def test_a_live_run_produces_a_traceable_blueprint(live):
     assert preview["clauses"] >= 3 and preview["preview"][1]["clause_ref"] == "sec-1"
     client.post("/v1/scopes", json={"name": "program", "sources": ["privacy", "baseline"]})
     client.put("/v1/profiles/eu-co", json={"name": "EU company",
-                                           "attributes": {"jurisdictions": ["EU"], "data_footprint": "customer data"}})
+                                           "attributes": {"jurisdictions": ["EU"], "roles": ["controller"]}})
     client.put("/v1/profiles/us-co", json={"name": "US company",
-                                           "attributes": {"jurisdictions": ["US"], "data_footprint": "customer data"}})
+                                           "attributes": {"jurisdictions": ["US"], "roles": ["controller"]}})
     release = _run(client, "program", ["eu-co", "us-co"])
 
     eu = client.get(f"/v1/releases/{release}/blueprints/eu-co").json()
@@ -98,8 +98,9 @@ def test_a_live_run_produces_a_traceable_blueprint(live):
     assert all(c["duty"] for c in eu["coverage"])
     assert eu["minimality"]["checked"] and eu["minimality"]["minimal"]
     assert eu["items"] and all(item["explanation"] for item in eu["items"])
-    assert eu["not_applicable"] == []
+    assert eu["not_applicable"] == [] and eu["undetermined"] == []
     assert eu["scope"]["source_keys"] == ["baseline", "privacy"]
+    _assert_quotes_hold(eu)
 
     us = client.get(f"/v1/releases/{release}/blueprints/us-co").json()
     assert {c["source_key"] for c in us["coverage"]} == {"baseline"}
@@ -108,8 +109,13 @@ def test_a_live_run_produces_a_traceable_blueprint(live):
 
     assert {"run.started", "run.finished", "release.published", "blueprint.changed"} <= set(events)
     assert "source.failed" not in events
-    layers = client.get(f"/v1/releases/{release}").json()["layers"]
-    assert layers["L2"]["model_calls"]["failed"] == 0
+    released = client.get(f"/v1/releases/{release}").json()
+    assert released["layers"]["L2"]["model_calls"]["failed"] == 0
+    assert released["lineage"]["checked"] and released["lineage"]["unanchored"] == []
+    assert released["lineage"]["rows"] == released["lineage"]["anchored"] > 0
+    assert released["layers"]["L7"]["built"] is False  # no enforcement source in scope
+    kinds = {g["kind"] for g in eu["evidence_gaps"]}
+    assert {"no_enforcement_sources", "no_licence_types"} <= kinds
 
 
 def test_runs_over_different_scopes_do_not_mix(live):
@@ -118,8 +124,8 @@ def test_runs_over_different_scopes_do_not_mix(live):
     client.post("/v1/sources", json={"key": "complaints", "adapter": "local_text", "locator": {"text": OTHER_RULE}})
     client.post("/v1/scopes", json={"name": "security", "sources": ["baseline"]})
     client.post("/v1/scopes", json={"name": "complaints", "sources": ["complaints"]})
-    client.put("/v1/profiles/co", json={"attributes": {"jurisdictions": ["EU"]}})
-    client.put("/v1/profiles/twin", json={"attributes": {"jurisdictions": ["EU"]}})
+    client.put("/v1/profiles/co", json={"attributes": {"jurisdictions": ["EU"], "roles": ["operator"]}})
+    client.put("/v1/profiles/twin", json={"attributes": {"jurisdictions": ["EU"], "roles": ["operator"]}})
     first = _run(client, "security", ["co"])
     second = _run(client, "complaints", ["co", "twin"])
 
@@ -165,4 +171,24 @@ def test_the_walkthrough_example(live):
     assert "sec-8" not in startup_refs  # the supervisory authority's duty, not the organisation's
     assert "sec-5" not in {c["clause_ref"] for c in lab["coverage"]}
     assert [n["clause_ref"] for n in lab["not_applicable"]] == ["sec-5"]
-    assert lab["not_applicable"][0]["because"][0]["requires"] == {"data_footprint": "*"}
+    because = lab["not_applicable"][0]["because"][0]
+    assert because["requires"]["fact"] == "processes personal data" and because["requires"]["expect"] is True
+    assert because["evidence"]["condition"][0]["quote"] == "Where an organisation processes personal data"
+    _assert_quotes_hold(startup)
+
+
+def _assert_quotes_hold(blueprint):
+    """Every quote a blueprint shows is the clause's own text at its offsets."""
+    import sqlalchemy as sa
+
+    from app.clhear.l1.models import clauses
+    from app.clhear.runtime import engine
+
+    quotes = [c["evidence"] for c in blueprint["coverage"]]
+    quotes += [q for it in blueprint["items"] for q in it["evidence"].get("name") or []]
+    quotes += [q for it in blueprint["items"] for ch in it["characteristics"] for q in ch["evidence"]]
+    assert quotes and all(quotes)
+    with engine().connect() as conn:
+        text = dict(conn.execute(sa.select(clauses.c.id, clauses.c.text)).all())
+    for q in quotes:
+        assert text[q["clause_id"]][q["start"]:q["end"]] == q["quote"]

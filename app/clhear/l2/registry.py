@@ -44,28 +44,6 @@ _LEADING_NUMBER = re.compile(
 _SENTENCE_END = re.compile(r"(?<=[.;:])\s+(?=[A-Z(\d])")
 _STRIP_TRAIL = re.compile(r"[\s,;:.]+$")
 
-TYPE_RULES: tuple[tuple[str, re.Pattern], ...] = (
-    ("prohibition", re.compile(r"\b(?:must not|shall not|may not|prohibited|is not permitted)\b", re.I)),
-    ("reporting", re.compile(r"\b(?:report|notify|notification|submit|file|inform the)\b", re.I)),
-    ("disclosure", re.compile(r"\b(?:disclose|disclosure|publish|make available|provide .{0,40}information)\b", re.I)),
-    ("record_keeping", re.compile(r"\b(?:record|records|retain|keep .{0,20}(?:records|register)|maintain .{0,20}(?:records|register|log))\b", re.I)),
-    ("authorisation", re.compile(r"\b(?:authoris|authoriz|licen[cs]e|permission|registration|registered)\b", re.I)),
-    ("prudential", re.compile(r"\b(?:capital|liquidity|own funds|prudential|solvency|leverage)\b", re.I)),
-    ("data_protection", re.compile(r"\b(?:personal data|data subjects?|privacy|processing of (?:personal )?(?:data|information)|"
-                                   r"consent|data protection|personal information)\b", re.I)),
-    ("security", re.compile(r"\b(?:security|encrypt|access control|authenticat|vulnerabilit|incident|breach|"
-                            r"malware|cyber|confidentiality|integrity and availability)\b", re.I)),
-    ("risk_management", re.compile(r"\b(?:risk assessment|assess(?:es|ing)? (?:the )?risks?|risk management|"
-                                   r"risks? (?:to|of)|mitigat|impact assessment)\b", re.I)),
-    ("training", re.compile(r"\b(?:train(?:ing|ed)?|awareness|competen(?:ce|t))\b", re.I)),
-    ("safety", re.compile(r"\b(?:safety|hazard|injur|harm to (?:health|persons)|protective equipment)\b", re.I)),
-    ("governance", re.compile(r"\b(?:governance|senior management|management body|board|policies and procedures|"
-                              r"systems and controls|compliance function|oversight|responsibilit)\b", re.I)),
-    ("consumer_protection", re.compile(r"\b(?:client|customer|consumer|investor|retail|best interests|fair|clearly|not misleading)\b", re.I)),
-    ("conduct", re.compile(r"\b(?:conduct|act honestly|integrity|due skill|due regard)\b", re.I)),
-)
-
-
 def duty_span(text: str) -> tuple[int, int] | None:
     """(start, end) of the sentence carrying the first modal, as offsets into
     ``text`` — the highlighted span on the obligation page."""
@@ -123,21 +101,29 @@ def parse_structure(text: str) -> dict:
     }
 
 
-def classify_type(text: str, modality: str = "") -> str:
-    if modality == "must-not":
-        return "prohibition"
-    for kind, pattern in TYPE_RULES:
-        if pattern.search(text or ""):
-            return kind
-    return "other"
+def duty_verb(structure: dict, modality: str = "") -> str:
+    """The duty's own verb, as written: "keep", "be kept", "not disclose".
+
+    This is the obligation's type. No taxonomy is imposed on the text."""
+    action = (structure.get("action") or "").split()
+    if not action:
+        return ""
+    verb = " ".join(action[:2]) if action[0].lower() in {"be", "been", "have"} and len(action) > 1 else action[0]
+    verb = verb.strip(" ,;:.").lower()
+    negative = modality in ("must-not", "prohibited") or (structure.get("modal") or "").endswith("not")
+    return f"not {verb}" if negative and not verb.startswith("not ") else verb
 
 
 def determination_text(structure: dict, fallback: str = "") -> str:
-    subject = structure.get("subject") or "The addressee"
+    """"<subject> <modal> <action>[, <condition>]" in the text's own words.
+
+    Without a stated subject or action the duty sentence itself is used: no
+    addressee is ever filled in."""
+    subject = structure.get("subject") or ""
     modal = structure.get("modal") or "must"
     action = structure.get("action") or ""
     condition = structure.get("condition") or ""
-    if not action:
+    if not action or not subject:
         return " ".join((fallback or "").split())[:480]
     text = f"{subject[0].upper()}{subject[1:]} {modal} {action}"
     if condition:
@@ -154,9 +140,94 @@ def structured_fields(text: str, modality: str) -> dict:
         "action": structure["action"],
         "condition": structure["condition"],
         "object": structure["object"],
-        "obligation_type": classify_type(text, modality),
+        "obligation_type": duty_verb(structure, modality),
         "determination": determination_text(structure, fallback=text),
     }
+
+
+FIELDS = ("subject", "action", "condition", "object")
+
+# Grammar, not vocabulary: words that stand for whoever the text addresses
+# without narrowing it ("every organisation", "any person", "you"), and pronouns
+# that point back to another noun.
+UNIVERSAL_ADDRESSEES = frozenset({"organisation", "organisations", "organization", "organizations", "person", "persons",
+                                  "people", "everyone", "everybody", "anyone", "anybody", "you", "entity", "entities",
+                                  "business", "businesses", "undertaking", "undertakings", "body corporate"})
+PRONOUNS = frozenset({"it", "they", "he", "she", "you", "we", "he or she", "they or it"})
+# A duty whose verb says what something contains ("the notice shall include ...")
+# sets content for a document; its subject is not who the duty binds.
+CONTENT_VERBS = frozenset({"include", "contain", "set", "state", "specify", "describe", "cover", "list", "comprise",
+                           "consist", "show"})
+
+
+def binds_subject(structure: dict) -> bool:
+    """Whether the duty's subject is who it binds: not passive, not a content requirement."""
+    action = (structure.get("action") or "").lower().split()
+    return bool(action) and action[0] not in {"be", "been"} and action[0] not in CONTENT_VERBS
+
+
+def is_universal(noun_phrase: str) -> bool:
+    words = re.sub(r"^(?:(?:each|every|any|all|an?|the|such)\s+)+", "", (noun_phrase or "").strip().lower())
+    return words in UNIVERSAL_ADDRESSEES or words in PRONOUNS
+
+
+def field_quotes(value: str, clauses: list[dict]) -> list[dict] | None:
+    """Quotes of ``value`` in the duty's clauses (its own clause first, then its
+    lead-in). A field read across a lead-in and its list item ("be" + "kept in a
+    form ...") is two quotes. None when the words are not in the text."""
+    from app.clhear import evidence
+
+    value = " ".join((value or "").split())
+    if not value:
+        return []
+    found = evidence.quote_first(clauses, value)
+    if found is not None:
+        return [found]
+    parts = value.split()
+    for cut in range(len(parts) - 1, 0, -1):
+        head, tail = " ".join(parts[:cut]), " ".join(parts[cut:])
+        for first in clauses:
+            for second in clauses:
+                if first is second:
+                    continue
+                left, right = evidence.quote(first, head), evidence.quote(second, tail)
+                if left is not None and right is not None:
+                    return [left, right]
+    return None
+
+
+def structure_evidence(fields: dict, clauses: list[dict]) -> dict:
+    """Per structured field, its quotes; ``None`` marks a field whose words are
+    not in the text (the field is then not used downstream)."""
+    out = {}
+    for key in FIELDS:
+        if key == "condition":
+            # A leading condition and a trailing one are joined with "; ": quote each.
+            parts = [field_quotes(p, clauses) for p in (fields.get(key) or "").split("; ") if p.strip()]
+            out[key] = None if any(p is None for p in parts) else [q for p in parts for q in p]
+            continue
+        out[key] = field_quotes(fields.get(key) or "", clauses)
+    verb = (fields.get("obligation_type") or "").removeprefix("not ")
+    out["verb"] = field_quotes(verb, clauses) if verb else []
+    return out
+
+
+def clause_dict(row, source_key: str) -> dict:
+    return {"id": row.id, "source_key": source_key, "ref": row.ref, "text": row.text or ""}
+
+
+def obligation_clauses(conn: Connection, ob: dict) -> list[dict]:
+    """The clause an obligation asserts, then the lead-in clause it continues."""
+    from app.clhear.l1.models import clauses
+
+    ids = [r[0] for r in conn.execute(sa.select(asserts.c.clause_id).where(asserts.c.obligation_id == ob["id"])
+                                      .where(asserts.c.valid_to.is_(None)).order_by(asserts.c.id))]
+    lead = ((ob.get("evidence") or {}).get("lead") or {}).get("clause_id") if isinstance(ob.get("evidence"), dict) else None
+    if lead is not None:
+        ids.append(lead)
+    rows = {r.id: r for r in conn.execute(sa.select(clauses.c.id, clauses.c.ref, clauses.c.text)
+                                          .where(clauses.c.id.in_(ids)))} if ids else {}
+    return [clause_dict(rows[i], ob["source_key"]) for i in dict.fromkeys(ids) if i in rows]
 
 
 def why_for(obligation_id: str, *, clause_id: int | None, text_hash: str, method: str,
@@ -216,6 +287,9 @@ def upsert_assert(
         .where(asserts.c.valid_to.is_(None))
     ).mappings().all()
     span = duty_span(text or "")
+    if span is None and (text or "").strip():
+        # A list item carries no modal of its own: the whole item is the duty's words.
+        span = (len(text) - len(text.lstrip()), len(text.rstrip()))
     for live in live_edges:
         if live["clause_id"] == clause_id and live["text_hash"] == text_hash and live["strength"] == strength:
             return live["id"]
@@ -388,7 +462,10 @@ def backfill_stable_ids_and_asserts(conn: Connection) -> dict:
 __all__ = [
     "AGENT",
     "backfill_stable_ids_and_asserts",
-    "classify_type",
+    "duty_verb",
+    "field_quotes",
+    "obligation_clauses",
+    "structure_evidence",
     "determination_text",
     "duty_span",
     "ensure_stable_id",

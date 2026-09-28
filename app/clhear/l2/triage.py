@@ -81,6 +81,8 @@ def _weak_candidates(engine: Engine, limit: int = MAX_PER_RUN) -> list[dict]:
                     "ref": ref,
                     "sentence": sentence_text(row.text or "", context),
                     "text": text,
+                    "own_text": row.text or "",
+                    "lead_clause": context.get("lead_clause"),
                     "text_hash": row.text_hash,
                     "clause_id": row.id,
                     "jurisdiction": src.jurisdiction,
@@ -137,6 +139,18 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
             statement = statement[: MAX_STATEMENT - 1].rsplit(" ", 1)[0] + "…"
         addressee_match = ADDRESSEE.search(cand["text"])
         structured = registry.structured_fields(cand.get("sentence") or cand["text"], str(parsed.get("modality") or "should"))
+        from types import SimpleNamespace
+
+        from app.clhear import evidence as ev
+        from app.clhear.l2.extract import _evidence
+
+        found = _evidence(SimpleNamespace(clause_id=cand["clause_id"], source_key=cand["source_key"], ref=cand["ref"],
+                                          own_text=cand["own_text"], lead_clause=cand.get("lead_clause")), structured)
+        clauses_read = [{"id": cand["clause_id"], "source_key": cand["source_key"], "ref": cand["ref"],
+                         "text": cand["own_text"]}]
+        if cand.get("lead_clause"):
+            clauses_read.append({**cand["lead_clause"], "source_key": cand["source_key"]})
+        found["model_span"] = ev.quote_first(clauses_read, span)
         with engine.begin() as conn:
             why = registry.why_for(
                 oid, clause_id=cand["clause_id"], text_hash=cand["text_hash"], method="duty-triage-v1",
@@ -166,6 +180,7 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
                     text_hash=cand["text_hash"],
                     source_version_label=cand["version_label"] or "",
                     effective_from=cand.get("as_of_date"),
+                    evidence=found,
                     **structured,
                 ),
                 why=why,
@@ -174,7 +189,7 @@ def triage_duties(engine: Engine, llm, limit: int = MAX_PER_RUN) -> dict:
             trail = why_id(conn, oid)
             registry.upsert_assert(
                 conn, obligation_id=oid, clause_id=cand["clause_id"], source_key=cand["source_key"],
-                clause_ref=cand["ref"], text=cand["text"], text_hash=cand["text_hash"],
+                clause_ref=cand["ref"], text=cand["own_text"], text_hash=cand["text_hash"],
                 strength="implied", why=trail,
             )
             registry.record_change(

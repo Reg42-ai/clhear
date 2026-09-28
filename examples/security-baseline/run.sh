@@ -49,6 +49,13 @@ print("duties:")
 for c in b["coverage"]:
     print(" ", c["state"].ljust(8), c["clause_ref"].ljust(10), c["duty"][:90])
 for n in b["not_applicable"]:
-    print("  n/a     ", n["clause_ref"].ljust(10), "needs", n["because"][0]["requires"])
+    print("  n/a     ", n["clause_ref"].ljust(10), "because:", n["because"][0]["rationale"])
+for q in b["open_questions"]:
+    print("open question:", q["ask"])
+print("evidence gaps:")
+for g in b["evidence_gaps"]:
+    print(" -", g["kind"], g["subject"], "->", g["recommendation"][:100])
 print("minimal:", b["minimality"]["minimal"])'
 done
+echo "== Lineage"
+post GET "/v1/releases/$RELEASE" | python3 -c 'import json,sys; l=json.load(sys.stdin)["lineage"]; print(l["anchored"], "of", l["rows"], "records quoted from the text; unanchored:", l["unanchored"])'

@@ -83,7 +83,8 @@ def test_l2_finds_the_organisations_duties_and_only_those(install):
     item = found["art-5/1/a"]
     assert item.statement.startswith("1. Personal data shall be: (a) processed lawfully")
     assert item.title.startswith("(a) processed lawfully")
-    assert found["art-32/1"].obligation_type in {"security", "data_protection"}
+    assert found["art-32/1"].obligation_type == "implement"  # the duty's own verb, not a taxonomy
+
     assert report["layers"]["L2"]["model_calls"]["failed"] == 0
 
 
@@ -113,3 +114,4 @@ def test_triage_duties_survive_the_next_extraction(install):
     finally:
         os.environ.pop("CLHEAR_SOURCE_SCOPE", None)
     assert _obligations()["art-32/1"].status != "stale"
+

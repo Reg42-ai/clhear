@@ -17,18 +17,18 @@ _OBLIGATION_LINE = re.compile(r"^- (OBL:[^\s]+) \[(?P<key>[^\s#]+) #(?P<ref>[^\]
 _CHARACTERISTIC = re.compile(r"^- (?P<key>[a-z_]+): ", re.M)
 
 
+_AFTER_MODAL = re.compile(r"\b(?:shall|must|should)\s+(?:not\s+)?(?P<rest>[^,;.]+)", re.I)
+
+
 def _block(prompt: str) -> dict:
-    rows = list(_OBLIGATION_LINE.finditer(prompt))
-    satisfies: dict[str, list[str]] = {}
-    for row in rows:
-        satisfies.setdefault(row.group("key"), []).append(row.group("ref"))
-    first = rows[0].group("text") if rows else "Compliance measure"
-    words = re.sub(r"[^A-Za-z ]+", " ", first).split()
-    name = " ".join(words[:6]).capitalize() or "Compliance measure"
-    return {"name": f"{name} procedure", "kind": "Process", "purpose": f"Meet: {first[:160]}",
-            "description": f"A documented procedure so that {first[:200]}", "capability": "procedure",
-            "evidence_artifacts": ["procedure document", "records of performance"],
-            "satisfies": [{"source_key": k, "refs": v} for k, v in satisfies.items()]}
+    """One measure per duty, named with the words after its modal (as a careful model would)."""
+    measures = []
+    for row in _OBLIGATION_LINE.finditer(prompt):
+        found = _AFTER_MODAL.search(row.group("text"))
+        words = (found.group("rest") if found else row.group("text")).split()[:6]
+        measures.append({"name": " ".join(words).capitalize(), "kind": "", "kind_quote": "",
+                         "satisfies": [{"source_key": row.group("key"), "refs": [row.group("ref")]}]})
+    return {"measures": measures}
 
 
 def respond(prompt: str, system: str | None = None, model: str | None = None) -> str:

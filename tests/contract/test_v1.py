@@ -67,7 +67,7 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
     body = version.json()
     assert body["engine_version"] == "0.2.0"
     assert body["api_version"] == "v1"
-    assert body["schema_revision"] == "0041"
+    assert body["schema_revision"] == "0042"
     assert body["image_digest"] == "sha256:abc"
     assert client.get("/v1/health").json()["status"] == "ok"
     adapters = client.get("/v1/adapters").json()["adapters"]
@@ -110,7 +110,7 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
 
     profile = client.put("/v1/profiles/example-profile", json={
         "name": "Example profile",
-        "attributes": {"jurisdictions": [], "channels": []},
+        "attributes": {"jurisdictions": [], "roles": []},
     })
     assert profile.status_code == 200
     assert client.get("/v1/profiles/example-profile").json()["profile_id"] == "example-profile"

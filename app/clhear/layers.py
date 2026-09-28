@@ -130,69 +130,60 @@ LAYER_CATALOG: dict[str, dict] = {
         "schema": "l3_building_blocks",
         "published": False,
         "status": "derived",
-        "purpose": "What an organisation must have — the eight kinds of building block "
-        "(System, Document, Role, Configuration, Process, Workflow, Asset, Body) that "
-        "L2 obligations require, each with a fixed characteristic schema.",
+        "purpose": "What an organisation must do or have to meet each duty, named in the duty's own words, "
+        "with the kind of thing it is (System, Document, Role, Configuration, Process, Workflow, Asset, Body, "
+        "or Unspecified when the words do not say) and the characteristics the clauses state.",
         "derivation": {
             "inputs": ["L2"],
-            "method": "Every live obligation is decomposed into the block(s) it requires: "
-            "curated anchors first, then a deterministic reading of the duty sentence "
-            "(kind cue + harmonised noun phrase) that reuses an existing canonical block "
-            "of the same kind when the name matches. Each obligation -> block link is a "
-            "'requires' edge carrying its rationale span and why-trail; characteristics "
-            "are filled only from backing obligation text (or marked 'not specified by "
-            "source'); near-duplicate blocks are harmonised into one canonical block.",
+            "method": "A model groups duties into measures, and a name is kept only when every word of it "
+            "occurs in the cited clauses. Any duty still without one gets the measure its own words name "
+            "(the quoted action, or the thing to have), with its kind read from the same words. A duty "
+            "that names nothing concrete gets no measure and an evidence gap. Characteristics are "
+            "recorded only as quotes of a clause; each field the clauses leave open is an evidence gap.",
             "generation": {
-                "nature": "deterministic decomposition; LLM confined to gap-filling characteristics under a grounding contract",
-                "technique": "Duty-sentence kind cues + name harmonisation; characteristic regexes; grounded LLM fill",
-                "guarantee": "Every requires edge cites a live obligation and a rationale span; every characteristic value is backed by a span or explicitly not specified; merges keep the dropped block invalidated, never deleted",
-                "may": ["propose block names and purposes from the duty sentence", "fill a characteristic from a literal span"],
-                "must_not": ["cite obligations that do not exist", "invent a characteristic value"],
+                "nature": "deterministic naming from the duty's words; LLM grouping kept only in the text's words",
+                "technique": "Quoted action / object phrase; kind from the head noun or verb; quoted characteristics",
+                "guarantee": "Every measure name, kind and characteristic quotes a clause of a duty it satisfies; what the text does not state is an evidence gap",
+                "may": ["group duties under one measure named in their words", "quote a characteristic from a clause"],
+                "must_not": ["cite obligations that do not exist", "name a measure with words not in the text", "fill a characteristic the text does not state"],
                 "gates": ["l3_completeness", "l3_characteristics", "l3_reuse", "l3_precision", "l3_l5_referential"],
             },
             "gates": [
-                "100% of live obligations link to >= 1 block; characteristic completeness >= 95%; expert precision >= 92%; reuse ratio published with an explosion check (HLD v2 §4.3)",
+                "Every requires edge, measure name and characteristic passes the lineage check against the clause text",
                 "L2 'revoked' invalidates the obligation's requires edges; 'updated' re-stamps them and reopens characteristics it backed",
-                "Ungrounded requires edges and characteristic values are rejected before write",
             ],
-            "evidence": ["requires edges with rationale spans per block, each traceable to L2 -> L1", "characteristic backing spans"],
+            "evidence": ["quoted measure name and kind", "quoted duty per requires edge", "quoted characteristic values"],
         },
     },
     "L4": {
         "slug": "l4",
-        "name": "Profile space",
+        "name": "Applicability",
         "schema": "l4_profiles",
         "published": False,
         "status": "derived",
-        "purpose": "The profile permutation space: jurisdictions -> regulators -> "
-        "authorisations -> permitted products and services -> client types -> channels, "
-        "plus the validity rules that make an impossible permutation detectable and the "
-        "applies_to predicates that say which obligations reach which profiles.",
+        "purpose": "The questions the texts raise about an organisation (where it operates, which "
+        "addressee it is, which facts in a duty's own 'where / if / unless' clause hold) and the "
+        "applies_to edges that say which duty depends on which answer.",
         "derivation": {
             "inputs": ["L1", "L2"],
-            "method": "The ontology is built from public regulator registers and permission "
-            "taxonomies (FCA register / RAO, ESMA and EBA registers, SEC, FinCEN, NFA) held "
-            "as a reviewed snapshot and cross-checked against the live registers each night; every "
-            "row carries its register URL and reference. Validity rules (licence foundations, "
-            "product permits, regime flags) are read from the same instruments. Applicability "
-            "predicates are derived deterministically from each obligation's jurisdiction, subject and "
-            "condition in the shared predicate language, with a grounded LLM read only where the "
-            "structured fields carry no cue. Profiles are declared by the organisation and validated "
-            "against the ontology before they are stored; the builder only offers valid permutations.",
+            "method": "Each duty's edges are read from its own words: the jurisdiction its source "
+            "declares, the addressee it names unless that is everyone, and its condition when the "
+            "condition is about the addressee. Licence types are read only from the scope's licensing "
+            "clauses and kept only in their words. A profile answers the questions; a duty applies, is "
+            "not applicable, or is undetermined while a question is unanswered.",
             "generation": {
-                "nature": "register-backed ontology; deterministic predicates; LLM confined to a closed-world applicability read",
-                "technique": "Register snapshot + live cross-check; permits / validity rules; cue-based predicate extraction; grounded quote-required LLM fallback",
-                "guarantee": "Every licence cites its register; every profile is validated (impossible permutations are never offered as valid); every applies_to edge carries its rationale and why-trail and is re-stamped when L2 changes",
-                "may": ["propose an applicability predicate quoting the obligation text", "flag a permutation as invalid with the rule that says so"],
-                "must_not": ["invent an authorisation that no register holds", "store an invalid permutation as valid"],
-                "gates": ["l4_validity", "l4_applicability", "l4_grounding"],
+                "nature": "deterministic reading of the duty's grammar; LLM confined to quoting licence types",
+                "technique": "Subject / condition quotes; three-valued evaluation; licensing-clause extraction with a quote check",
+                "guarantee": "Every applies_to edge quotes the words it was read from; no role, condition or licence exists that is not in the texts in scope",
+                "may": ["quote a licence type from a licensing clause"],
+                "must_not": ["invent a role, condition or licence", "decide an unanswered question"],
+                "gates": ["l4_applicability", "l4_grounding"],
             },
             "gates": [
-                "Profile validity >= 99% on the golden permutation set with register provenance for every licence named (HLD v2 §4.4)",
-                "Applicability precision / recall >= 95% against golden predicates; every stored edge points at a live obligation and schema attributes",
-                "L2 'revoked' withdraws the obligation's applies_to edges; 'updated' re-stamps them; an ontology change re-validates every stored profile",
+                "Every applies_to edge points at a live obligation and carries its quotes",
+                "L2 'revoked' withdraws the obligation's applies_to edges; 'updated' re-reads them",
             ],
-            "evidence": ["register URL + reference per licence", "permits and validity rules per permutation", "applies_to rationale per obligation"],
+            "evidence": ["quoted subject or condition per edge", "declared jurisdiction per source", "quoted licensing clause per licence type"],
         },
     },
     "L5": {
@@ -201,39 +192,27 @@ LAYER_CATALOG: dict[str, dict] = {
         "schema": "l5_activities",
         "published": False,
         "status": "derived",
-        "purpose": "The junction between what an organisation does and what governs it: business "
-        "activities (onboarding, order handling, marketing, deposits and withdrawals, custody, "
-        "advice, data processing, outsourcing) implied by its L4 products and services, and the "
-        "compliance activities (screen, monitor, investigate, report, notify, train, attest, "
-        "assess, record, control, test) that govern them, each edge lit by the obligations both share.",
+        "purpose": "Who does what: each duty's quoted action, operated by the addressee the clause "
+        "names, and the measures it operates.",
         "derivation": {
-            "inputs": ["L2", "L3", "L4"],
-            "method": "Every live obligation is mapped to a compliance activity by a cue read from its "
-            "duty text, else to the activity that operates the L3 block it requires, so nothing is "
-            "left unmapped; the trigger's when-condition is the obligation's L4 applicability predicate. "
-            "implies edges come from the reviewed product table; operates edges are derived through "
-            "the obligations an activity triggers and their requires edges; mitigates edges light up "
-            "where a compliance activity and a business activity share an obligation (curated anchors, "
-            "shared anchors, or L4 product predicates through implies).",
+            "inputs": ["L2", "L3"],
+            "method": "For every duty with a measure, the activity is the duty's action as quoted and its "
+            "operator the addressee the clause names. A duty addressed to everyone, or written in the "
+            "passive, names no operator: the gap is recorded. operates edges link an activity to the "
+            "measures its duties require. No activity catalogue is used.",
             "generation": {
-                "nature": "constrained mapping, closed-world on BOTH ends",
-                "technique": "deterministic cue mapping and block fallback; router step re-homes block-fallback "
-                "mappings by choosing from the existing activities or proposing one with a side and an action "
-                "type from the published vocabulary, quoting the text it read",
-                "guarantee": "Trigger anchors resolve to live obligations; when conditions reference only L4 schema "
-                "attributes; sides and action types come from the published vocabulary; no orphan activity",
-                "may": ["propose a when-condition using known profile keys", "propose a new activity from the vocabulary"],
-                "must_not": ["invent profile attributes", "point at missing obligations", "use a side or action type outside the vocabulary"],
-                "gates": ["l5_completeness", "l5_mapping", "l5_precision", "l3_l5_referential"],
+                "nature": "deterministic, from the duty's words",
+                "technique": "Quoted action and addressee; operates via requires edges",
+                "guarantee": "Every activity and operator quotes a clause; trigger anchors resolve to live obligations",
+                "may": [],
+                "must_not": ["invent an activity, operator or business process"],
+                "gates": ["l5_completeness", "l3_l5_referential"],
             },
             "gates": [
-                "Junction completeness 100 %: every business activity implied by a product / service, every compliance "
-                "activity operating a block and anchored to an obligation, no dangling edge endpoint",
-                "Golden mapping accuracy >= 92 % and golden activity maps reproduced",
-                "Expert precision >= 92 % on Eval Studio votes",
-                "L2 'revoked' unlights the edges the obligation lit; an L4 ontology change re-derives implies",
+                "Every activity and operates edge passes the lineage check",
+                "L2 'revoked' unlights the edges the obligation lit",
             ],
-            "evidence": ["trigger per activity with cue, when-condition and clause anchor", "implies / operates / mitigates edges with obligation refs and rationale"],
+            "evidence": ["quoted action and operator per activity", "quoted duty per operates edge"],
         },
     },
     "L6": {

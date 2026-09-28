@@ -64,24 +64,17 @@ def _engine():
     return engine()
 
 
-def _attribute_keys() -> set[str]:
-    from app.clhear import curated
-
-    return {item["key"] for item in curated.load("l4_attribute_schema")}
-
-
 def _check_attributes(attributes: dict) -> None:
+    from app.clhear.l4.validate import validate
+
     if not isinstance(attributes, dict):
         raise HTTPException(status_code=422, detail="attributes must be an object")
-    unknown = sorted(set(attributes) - _attribute_keys())
-    if unknown:
+    errors = validate(None, attributes)["errors"]
+    if errors:
         raise HTTPException(
             status_code=422,
-            detail=(
-                f"unknown profile field {unknown}. "
-                "A profile may include jurisdictions, authorisations, products, customer_base, "
-                "channels, data_footprint, crypto_services, financial_entity_dora."
-            ),
+            detail=" ".join(e["message"] for e in errors)
+            + " A profile may include jurisdictions, roles, conditions and licences.",
         )
 
 
@@ -265,11 +258,14 @@ def create_app() -> FastAPI:
         return out
 
     @application.get("/v1/profile-schema")
-    def profile_schema() -> dict:
+    def profile_schema(scope: str | None = Query(default=None)) -> dict:
         from app.clhear.l4.validate import profile_schema as schema
 
         with _engine().connect() as conn:
-            return {"fields": schema(conn)}
+            try:
+                return schema(conn, scope)
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @application.get("/v1/profiles/{profile_id}")
     def get_profile(profile_id: str) -> dict:
@@ -325,6 +321,7 @@ def create_app() -> FastAPI:
             "layers": body.get("layers") or {},
             "sources": body.get("sources") or {},
             "failed_sources": body.get("failed_sources") or [],
+            "lineage": body.get("lineage") or {},
             "profiles": sorted((body.get("profiles") or {}).keys()),
             "created_at": _iso(row["created_at"]),
         }
@@ -425,6 +422,10 @@ def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> di
         "minimality": composition.get("minimality") or {},
         "coverage_summary": composition.get("coverage_summary") or {},
         "not_applicable": composition.get("not_applicable") or [],
+        "undetermined": composition.get("undetermined") or [],
+        "open_questions": composition.get("open_questions") or [],
+        "evidence_gaps": composition.get("evidence_gaps") or [],
+        "profile_warnings": composition.get("profile_warnings") or [],
         "scope": composition.get("scope"),
         **({"sample": True} if composition.get("sample") else {}),
         "engine_version": composition.get("engine_version"),

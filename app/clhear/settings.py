@@ -33,10 +33,6 @@ class Settings(BaseSettings):
     clhear_llm_effort: str = "medium"
     # Server-side refusal fallbacks on Claude Opus 5 / Fable (first-party API only).
     clhear_llm_fallbacks: bool = True
-    # Seed the reviewed UK/EU/US financial-services ontology (licences, products,
-    # validity rules) and activities at migration. Off: a host's own sources
-    # define everything, and no finance vocabulary narrows other domains.
-    clhear_curated_finance: bool = False
     anthropic_api_key: str = ""
     openai_base_url: str = ""
     openai_api_key: str = ""
@@ -111,7 +107,7 @@ class Settings(BaseSettings):
     clhear_bind_host: str = "127.0.0.1"
     clhear_engine_version: str = "0.2.0"
     clhear_api_version: str = "v1"
-    clhear_schema_revision: str = "0041"
+    clhear_schema_revision: str = "0042"
     clhear_image_digest: str = ""
 
     # --- community accounts & contributions (Phase C) ---

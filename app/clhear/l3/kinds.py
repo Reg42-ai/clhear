@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import re
 
-KINDS: tuple[str, ...] = ("System", "Document", "Role", "Configuration", "Process", "Workflow", "Asset", "Body")
+KINDS: tuple[str, ...] = ("System", "Document", "Role", "Configuration", "Process", "Workflow", "Asset", "Body",
+                          "Unspecified")
 
 # kind -> ordered (key, description) pairs. Every key is required: a missing
 # characteristic is a gap, an unknowable one is recorded as `not_specified`.
@@ -37,7 +38,7 @@ KIND_SCHEMAS: dict[str, dict] = {
         ),
     },
     "Role": {
-        "description": "A named function or officer (MLRO, compliance officer, data protection officer).",
+        "description": "A named function or officer the text requires someone to hold.",
         "fields": (
             ("seniority", "Required seniority (senior management, board-level, any)."),
             ("independence", "Independence requirements from business lines."),
@@ -54,7 +55,7 @@ KIND_SCHEMAS: dict[str, dict] = {
         ),
     },
     "System": {
-        "description": "A technical capability (transaction monitoring, screening, record-keeping system).",
+        "description": "A technical capability (a monitoring, screening or record-keeping system).",
         "fields": (
             ("capability", "What the system must be able to do."),
             ("data_inputs", "Data it consumes."),
@@ -62,7 +63,7 @@ KIND_SCHEMAS: dict[str, dict] = {
         ),
     },
     "Asset": {
-        "description": "Something held or maintained at a level (capital, client money, insurance cover).",
+        "description": "Something held or maintained at a level (equipment, insurance cover, reserves).",
         "fields": (
             ("quantity_or_threshold", "Amount, ratio or threshold required."),
             ("custody", "Where or how it is held / segregated."),
@@ -82,31 +83,54 @@ KIND_SCHEMAS: dict[str, dict] = {
             ("sla", "Deadlines or service levels across the workflow."),
         ),
     },
+    "Unspecified": {
+        "description": "The text names the measure but not what kind of thing it is.",
+        "fields": (),
+    },
 }
 
 NOT_SPECIFIED = "not specified by source"
 
-# Deterministic kind cues, checked in order (first hit wins). Legal text is
-# formulaic enough that these carry most of the decomposition; the LLM
-# decomposer only handles clauses none of them match.
-_KIND_CUES: tuple[tuple[str, re.Pattern], ...] = (
-    ("Body", re.compile(r"\b(committee|board of directors|management body|supervisory board|audit committee|risk committee|forum)\b", re.I)),
-    ("Role", re.compile(r"\b(appoint|designat\w+|officer|MLRO|nominated officer|compliance function|senior manager\w*|data protection officer|responsible (?:person|individual)|head of)\b", re.I)),
-    ("Document", re.compile(r"\b(polic(?:y|ies)|written procedures?|procedures? (?:document|manual)|register|charter|terms of business|plan|statement|manual|contract|agreement|disclosure document|prospectus|report(?:s)? in writing)\b", re.I)),
-    ("System", re.compile(r"\b(system|systems and controls|monitor\w*|surveillance|screen\w*|automated|software|information technology|ICT|record-keeping system|database)\b", re.I)),
-    ("Asset", re.compile(r"\b(own funds|capital|client money|client assets|safeguarding (?:of )?(?:client|customer) (?:money|funds|assets)|insurance|indemnity|reserve|liquidity|collateral|segregat\w+)\b", re.I)),
-    ("Configuration", re.compile(r"\b(threshold|limit|no (?:more|less) than|not exceed\w*|at least \d|maximum|minimum|within \d+ (?:business |working )?days|parameter)\b", re.I)),
-    ("Workflow", re.compile(r"\b(escalat\w+|hand[- ]?off|end[- ]to[- ]end|workflow|approval chain|sign[- ]off)\b", re.I)),
-    ("Process", re.compile(r"\b(review|assess\w*|report|notify|submit|file|verify|identify|record|retain|train\w*|test\w*|reconcil\w+|conduct|carry out|perform|disclose|inform)\b", re.I)),
-)
+# How a measure's kind is read from the duty's own words. These are the
+# engine's data model in plain English (what counts as a document, a system, a
+# role), not the vocabulary of any sector. Only the object's head noun counts:
+# the words before its first preposition ("an inventory of the systems" is a
+# Document, "access to systems" is not a System).
+KIND_NOUNS: dict[str, frozenset[str]] = {
+    "Document": frozenset({"policy", "policies", "procedure", "procedures", "plan", "plans", "register", "registers",
+                           "record", "records", "log", "logs", "inventory", "inventories", "notice", "notices",
+                           "statement", "statements", "report", "reports", "manual", "charter", "agreement",
+                           "agreements", "contract", "contracts", "documentation", "document", "documents", "list",
+                           "catalogue", "catalog", "file", "files"}),
+    "System": frozenset({"system", "systems", "software", "database", "databases", "tool", "tools", "platform",
+                         "platforms"}),
+    "Role": frozenset({"officer", "officers", "representative", "representatives", "coordinator", "coordinators",
+                       "manager", "managers", "person", "persons", "individual", "individuals", "lead"}),
+    "Body": frozenset({"committee", "committees", "board", "boards", "body", "bodies", "forum", "forums"}),
+    "Asset": frozenset({"equipment", "insurance", "facility", "facilities", "premises", "stock", "stocks"}),
+    "Configuration": frozenset({"threshold", "thresholds", "limit", "limits", "setting", "settings", "parameter",
+                                "parameters"}),
+    "Workflow": frozenset({"workflow", "workflows", "escalation"}),
+}
+ROLE_VERBS = frozenset({"appoint", "designate", "nominate", "employ", "name", "engage"})
+_PREPOSITION = re.compile(r"\s(?:of|to|for|in|on|with|by|from|at|about|under|within|between|against|into|that|which|who)\s", re.I)
 
 
-def infer_kind(text: str) -> str:
-    """Kind of the block an obligation most directly requires."""
-    for kind, pattern in _KIND_CUES:
-        if pattern.search(text or ""):
-            return kind
-    return "Process"
+def head_phrase(obj: str) -> str:
+    """The object's words before its first preposition or relative clause."""
+    return _PREPOSITION.split(f" {obj} ", maxsplit=1)[0].strip()
+
+
+def kind_from_words(verb: str, obj: str) -> tuple[str, str]:
+    """(kind, the word it was read from). ``Unspecified`` with no word when the
+    duty's words do not say what kind of thing the measure is."""
+    if verb.lower() in ROLE_VERBS:
+        return "Role", verb
+    for word in re.findall(r"[A-Za-z]+", head_phrase(obj)):
+        for kind, nouns in KIND_NOUNS.items():
+            if word.lower() in nouns:
+                return kind, word
+    return "Unspecified", ""
 
 
 def required_fields(kind: str) -> tuple[str, ...]:

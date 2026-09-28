@@ -458,6 +458,14 @@ paths:
     get:
       operationId: profile_schema_v1_profile_schema_get
       parameters:
+      - in: query
+        name: scope
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scope
       - in: header
         name: authorization
         required: false

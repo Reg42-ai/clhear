@@ -114,6 +114,13 @@ def _stored_clause_count(engine: Engine, keys: list[str]) -> int:
             .join(sources, source_versions.c.source_id == sources.c.id)).where(sources.c.key.in_(keys))).scalar_one()
 
 
+def _clear_gaps(engine: Engine, layer: str) -> None:
+    from app.clhear import evidence
+
+    with engine.begin() as conn:
+        evidence.clear_gaps(conn, scope=scopes.active_name() or "", layer=layer)
+
+
 def derive_l2(engine: Engine, llm) -> dict:
     from app.clhear.l2.consolidate import draft_and_propose
     from app.clhear.l2.dedupe import consolidate
@@ -138,44 +145,92 @@ def derive_l3(engine: Engine, llm) -> dict:
     from app.clhear.l3.generate import generate_blocks
     from app.clhear.l3.harmonize import harmonize
 
+    _clear_gaps(engine, "L3")
     return {"data_model": seed_data_model(engine), "generated": generate_blocks(engine, llm),
             "decomposition": decompose(engine), "harmonisation": harmonize(engine),
             "characterisation": characterize(engine, llm)}
 
 
+def _defines(texts: list[str], label: str) -> bool:
+    """True when a clause in scope defines ``label`` ("'controller' means ...")."""
+    import re
+
+    words = r"\W+".join(re.escape(w) for w in label.split())
+    pattern = re.compile(rf"\b{words}s?\b[\"'”’)]*\s*(?:,[^.;]{{0,60}},\s*)?(?:means|includes|shall mean|is defined|refers to)\b"
+                         rf"|\b(?:term|expression)\s+[\"'“‘]?{words}", re.I)
+    return any(pattern.search(t) for t in texts)
+
+
+def _role_gaps(engine: Engine, asked: dict, keys: list[str]) -> int:
+    """An evidence gap per role the duties use but no text in scope defines."""
+    import sqlalchemy as sa
+
+    from app.clhear import evidence
+    from app.clhear.l1.models import clauses, source_versions, sources
+
+    with engine.begin() as conn:
+        texts = [r[0] or "" for r in conn.execute(
+            sa.select(clauses.c.text).join(source_versions, clauses.c.source_version_id == source_versions.c.id)
+            .join(sources, source_versions.c.source_id == sources.c.id)
+            .where(sources.c.key.in_(keys), source_versions.c.status == "in_force"))]
+        found = 0
+        for role in asked["roles"]:
+            if _defines(texts, role["label"]):
+                continue
+            first = (role["quotes"] or [{}])[0]
+            evidence.record_gap(conn, scope=scopes.active_name() or "", layer="L4", kind="role_undefined",
+                                subject=f"role:{role['role']}", source_key=first.get("source_key", ""),
+                                clause_ref=first.get("clause_ref", ""), missing=f"a definition of '{role['label']}'",
+                                role=role["label"], detail={"duties": role["duties"]})
+            found += 1
+    return found
+
+
 def derive_l4(engine: Engine, llm, profiles: list[dict]) -> dict:
+    """Applicability read from the texts, the questions it raises, and each
+    profile's answers checked against them."""
     from app.clhear.l4.licenses import extract_licenses
     from app.clhear.l4.ontology import build_ontology
-    from app.clhear.l4.predicates import extract_predicates
-    from app.clhear.l4.validate import create_profile, revalidate_profiles
+    from app.clhear.l4.predicates import extract_predicates, questions
+    from app.clhear.l4.validate import check_answers, create_profile, licence_questions
 
+    _clear_gaps(engine, "L4")
     licenses = extract_licenses(engine, llm)
     ontology = build_ontology(engine, check_registers=False)
-    predicates = extract_predicates(engine, llm)
+    predicates = extract_predicates(engine)
+    keys = sorted(scopes.source_keys() or [])
+    with engine.connect() as conn:
+        asked = questions(conn, keys)
+        asked["licences_named"] = [lic["name"] for lic in licence_questions(conn, keys)]
+    undefined = _role_gaps(engine, asked, keys)
     stored = []
     for profile in profiles:
-        # Tenant-submitted self-descriptions, validated against the derived ontology.
         row = create_profile(engine, profile["attributes"], name=profile.get("name", ""), source="api", allow_invalid=True)
         validity = row.get("validity") if isinstance(row.get("validity"), dict) else {}
         stored.append({"id": row["id"], "status": row.get("status"), "name": profile.get("name", ""),
-                       "errors": validity.get("errors") or [], "warnings": validity.get("warnings") or []})
-    return {"licenses": licenses, "ontology": {"version": ontology["version"], "merged": ontology["license_types_merged"]},
-            "predicates": predicates, "profiles": stored, "revalidation": revalidate_profiles(engine)}
+                       "errors": validity.get("errors") or [],
+                       "warnings": check_answers(asked, profile["attributes"] or {})})
+    return {"licenses": licenses, "ontology": {"version": ontology["version"]}, "predicates": predicates,
+            "questions": {"roles": len(asked["roles"]), "conditions": len(asked["conditions"]),
+                          "licences": len(asked["licences_named"]), "roles_undefined": undefined},
+            "profiles": stored}
 
 
 def derive_l5(engine: Engine, llm) -> dict:
     from app.clhear.l5.check import check_junction
     from app.clhear.l5.map import map_activities
 
+    _clear_gaps(engine, "L5")
     mapping = map_activities(engine, llm)
     junction = check_junction(engine)
     return {"mapping": mapping, "junction": {k: junction[k] for k in ("activities", "edges", "ok")},
             "orphans": len(junction["orphans"]), "dangling": len(junction["dangling"])}
 
 
-def derive_l6(engine: Engine, llm, profile_ids: list[str] | None = None) -> dict:
+def derive_l6(engine: Engine, llm, profile_ids: list[str] | None = None, withheld=None) -> dict:
     """Compose a blueprint for each profile this build stored, over this scope only.
 
+    Rows the lineage check could not anchor to a clause are ``withheld``.
     Explanations are the deterministic, citation-carrying text of ``l6.explain``.
     """
     from app.clhear.fleets import compose_stored_profiles
@@ -186,15 +241,39 @@ def derive_l6(engine: Engine, llm, profile_ids: list[str] | None = None) -> dict
     compositions = {}
     for pid in profile_ids or []:
         try:
-            compositions[pid] = composer.compose_for_profile(engine, pid, requested_by="l6.compose:scope")
+            compositions[pid] = composer.compose_for_profile(engine, pid, requested_by="l6.compose:scope",
+                                                             withheld=withheld)
         except KeyError:
             continue
     return {"compositions": compositions}
 
 
+def _kinds_in_scope(engine: Engine) -> set[str]:
+    import sqlalchemy as sa
+
+    from app.clhear.l1.models import sources
+
+    with engine.connect() as conn:
+        return {r[0] for r in conn.execute(sa.select(sources.c.kind).where(sources.c.key.in_(scopes.source_keys())))}
+
+
+def _not_built(engine: Engine, layer: str, kind: str, missing: str) -> dict:
+    """A layer with no source to derive from: no rows, no model call, one gap."""
+    from app.clhear import evidence
+
+    _clear_gaps(engine, layer)
+    with engine.begin() as conn:
+        gid = evidence.record_gap(conn, scope=scopes.active_name() or "", layer=layer, kind=kind, subject=layer,
+                                  missing=missing)
+    return {"built": False, "reason": evidence.recommendation(kind), "gap": gid}
+
+
 def derive_l7(engine: Engine, llm) -> dict:
     from app.clhear.l7 import enforcement, score
 
+    if "enforcement" not in _kinds_in_scope(engine):
+        return _not_built(engine, "L7", "no_enforcement_sources", "an enforcement source (kind 'enforcement')")
+    _clear_gaps(engine, "L7")
     return {"events": enforcement.ingest_events(engine), "links": enforcement.link_events(engine, llm),
             "calibration": {k: v for k, v in score.calibrate(engine).items() if k in ("status", "id", "held_out_year")},
             "obligation_scores": {k: v for k, v in score.score_obligations(engine).items() if k != "bands"}}
@@ -209,6 +288,9 @@ def item_priority(engine: Engine) -> dict:
 def derive_l8(engine: Engine, llm) -> dict:
     from app.clhear.l8.reference import reference_rows
 
+    if "guidance" not in _kinds_in_scope(engine):
+        return _not_built(engine, "L8", "no_reference_sources", "a guidance or reference source (kind 'guidance')")
+    _clear_gaps(engine, "L8")
     rows = reference_rows(engine)
     return {"reference_rows": len(rows), "mapped_to_blocks": sum(1 for r in rows if r["block_id"])}
 
@@ -240,7 +322,16 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
         return detail
 
     def run_l6() -> dict:
-        detail = derive_l6(engine, llm, held["profiles"])
+        from app.clhear import lineage
+
+        held["lineage"] = lineage.verify(engine, scope.get("sources") or [])
+        kinds = _kinds_in_scope(engine)
+        # L7 and L8 run after the blueprint: record now what they will lack, so the blueprint says so.
+        if "enforcement" not in kinds:
+            _not_built(engine, "L7", "no_enforcement_sources", "an enforcement source (kind 'enforcement')")
+        if "guidance" not in kinds:
+            _not_built(engine, "L8", "no_reference_sources", "a guidance or reference source (kind 'guidance')")
+        detail = derive_l6(engine, llm, held["profiles"], withheld=held["lineage"]["withheld"])
         held["compositions"] = detail.get("compositions") or {}
         return {k: v for k, v in detail.items() if k != "compositions"} | {"blueprints": sorted(
             c.get("blueprint_id") or "" for c in held["compositions"].values())}
@@ -273,10 +364,12 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
                                     steps=detail, started_at=started)
         report["layers"][layer] = {"revision": built["revision"], "inputs": inputs, "counts": built["counts"],
                                    "model_calls": calls}
+        if isinstance(detail, dict) and detail.get("built") is False:
+            report["layers"][layer].update(built=False, reason=detail["reason"])
         if calls["failed"] and not calls["ok"]:
             raise RuntimeError(f"Every model call in {layer} failed ({calls['failed']}); last error: {after['last_error']}")
         log.info("built %s %s from %s", layer, built["revision"][:12], {k: v[:12] for k, v in inputs.items()})
-    if "L7" in report["layers"]:
+    if "L7" in report["layers"] and report["layers"]["L7"].get("built", True):
         view = "L7 item priority"
         with engine.connect() as conn:
             inputs = layer_builds.check_inputs(conn, view, name)
@@ -284,6 +377,9 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
     report["profiles"] = held["profiles"]
     report["profile_checks"] = held.get("profile_checks") or []
     report["compositions"] = held.get("compositions") or {}
+    if "lineage" in held:
+        report["lineage"] = {k: v for k, v in held["lineage"].items() if k != "withheld"} | {
+            "withheld": len(held["lineage"]["withheld"])}
     return report
 
 

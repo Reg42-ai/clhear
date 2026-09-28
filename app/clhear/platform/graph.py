@@ -181,16 +181,11 @@ def _project_l4(conn: Connection, snap: GraphSnapshot) -> None:
         pred = _json(r["predicate"], {})
         snap.node(r["id"], "predicate", "L4", json.dumps(pred, sort_keys=True), basis=r["basis"], predicate=pred)
         snap.edge(r["obligation_id"], r["id"], "APPLIES_TO", "L4", basis=r["basis"], method=r["method"])
-        wanted = pred.get("authorisations")
-        for name in (wanted if isinstance(wanted, list) else [wanted] if isinstance(wanted, str) else []):
-            lic = licence_by_name.get(str(name).lower())
-            if lic:
-                snap.edge(r["id"], lic, "NAMES", "L4")
     for r in conn.execute(sa.select(profiles.c.id, profiles.c.name, profiles.c.status, profiles.c.attributes)
                           .where(profiles.c.valid_to.is_(None))).mappings():
         attrs = _json(r["attributes"], {})
         snap.node(r["id"], "profile", "L4", r["name"], status=r["status"], jurisdictions=attrs.get("jurisdictions", []))
-        for name in attrs.get("authorisations") or []:
+        for name in attrs.get("licences") or []:
             lic = licence_by_name.get(str(name).lower())
             if lic:
                 snap.edge(r["id"], lic, "HOLDS", "L4")
