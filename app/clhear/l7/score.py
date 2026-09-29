@@ -25,6 +25,9 @@ across jurisdictions):
 * ``likelihood`` — ``sigmoid(a + b*history + c*attention)``; ``(a, b, c)`` are
   fitted by grid search on the years before the held-out year
   (:func:`calibrate`) and the Brier score on the held-out year is published.
+* ``stated_penalty`` — the most severe penalty the binding texts state for
+  breaching the obligation (:mod:`app.clhear.l7.penalties`). It needs no
+  enforcement source; enforcement events stay the stronger input.
 """
 from __future__ import annotations
 
@@ -203,7 +206,10 @@ def _scale(values: dict[str, float]) -> dict[str, float]:
 def _features(conn: Connection, obs: dict[str, dict], events_by_ob: dict[str, list[dict]], as_of: date,
               *, operational: dict[str, tuple[int, int]] | None = None) -> dict[str, dict]:
     """Per obligation: scaled dimensions (except likelihood) + the raw evidence, as of a date."""
+    from app.clhear.l7.penalties import severity, stated_for
+
     operational = operational if operational is not None else _operational_counts(conn, obs)
+    stated = stated_for(conn)
     window_from = date(as_of.year - ATTENTION_YEARS, as_of.month, min(as_of.day, 28))
     changes = _change_counts(conn, window_from, as_of)
     volume = _regulator_volume(events_by_ob, window_from, as_of)
@@ -220,12 +226,16 @@ def _features(conn: Connection, obs: dict[str, dict], events_by_ob: dict[str, li
         raw["operational_impact"][oid] = n_blocks + 0.5 * n_acts
         regulators = {ev["regulator"] for ev in past} or {ob.get("regulator") or ""}
         raw["regulatory_attention"][oid] = changes.get(ob["source_key"], 0) + 0.5 * sum(volume.get(r, 0) for r in regulators)
+        penalties = stated.get(oid, [])
+        raw["stated_penalty"][oid] = max((severity(p) for p in penalties), default=0.0)
         evidence[oid] = {
             "events": sorted(ev["id"] for ev in past), "event_count": len(past),
             "total_amount": round(total, 2), "largest_amount": round(biggest, 2),
             "blocks_required": n_blocks, "activities_operating": n_acts,
             "change_events": changes.get(ob["source_key"], 0),
             "regulator_volume": sum(volume.get(r, 0) for r in regulators),
+            "stated_penalties": [p["id"] for p in penalties],
+            "stated_maximum": [f"{p['penalty_type']}: {p['maximum']}".rstrip(": ") for p in penalties],
             "as_of": as_of.isoformat(),
         }
     scaled = {d: _scale(vals) for d, vals in raw.items() if d != "likelihood"}
@@ -360,7 +370,8 @@ def _write_score(conn: Connection, *, kind: str, subject_ref: str, blueprint_id:
                  cal_ref: str, previous: dict | None, summary: str, input_layers: tuple, stats: dict) -> str | None:
     composite = composite_of(dims)
     ih = record.inputs_hash(json.dumps(dims, sort_keys=True), json.dumps(WEIGHTS, sort_keys=True), METHOD_VERSION, cal_ref,
-                            json.dumps(evidence.get("events") or evidence.get("obligations") or [], sort_keys=True))
+                            json.dumps(evidence.get("events") or evidence.get("obligations") or [], sort_keys=True),
+                            json.dumps(evidence.get("stated_penalties") or [], sort_keys=True))
     if previous is not None and previous["inputs_hash"] == ih:
         stats["unchanged"] += 1
         return None
@@ -468,6 +479,8 @@ def score_items(engine: Engine, *, blueprint_id: str | None = None) -> dict:
                         "obligation_scores": {s["subject_ref"]: float(s["composite"]) for s in scored},
                         "events": sorted({e for s in scored for e in _json(s["evidence"], {}).get("events", [])}),
                         "event_count": len({e for s in scored for e in _json(s["evidence"], {}).get("events", [])}),
+                        "stated_penalties": sorted({p for s in scored
+                                                    for p in _json(s["evidence"], {}).get("stated_penalties", [])}),
                         "block_id": it["block_id"], "basis": it["basis"]}
             composite = composite_of(dims)
             summary = (f"{it['id']} ({it['name']}) in {it['blueprint_id']}: max over {len(scored)} obligation score(s); "

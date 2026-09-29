@@ -32,8 +32,8 @@ The kind decides which layer reads the text:
 
 | Kind | Use it for | Layers that read it |
 | --- | --- | --- |
-| `law` | Acts and statutes, including their definitions sections | L2 obligations, L4 roles and licences |
-| `regulation` | Implementing rules, regulations, licensing and registration rules | L2 obligations, L4 roles and licences |
+| `law` | Acts and statutes, including their definitions and penalty sections | L2 obligations, L4 roles and licences, L7 stated penalties |
+| `regulation` | Implementing rules, regulations, licensing and registration rules | L2 obligations, L4 roles and licences, L7 stated penalties |
 | `standard` | Recognised standards and codes of practice the texts refer to | L3 components and their characteristics |
 | `guidance` | Regulator guidance, FAQs and Q&As, bulletins, inspection findings, court decisions, official journals | L3 components, L8 practices |
 | `form` | Official forms and templates | L3 components (documents to keep) |
@@ -121,7 +121,7 @@ For every layer that could not derive its records, the advice says what is missi
 | L4 Applicability | No licensing regime is in scope, or a role is used but not defined | Licensing, registration or scope-of-practice rules; the official register of licensed entities or licence categories (kind `register`); the definitions section; coverage guidance |
 | L4 Applicability | Obligations are undetermined | Not a missing source: answer the open questions |
 | L5 Compliance activities | The text does not say who performs the obligation | Rules or guidance that designate a responsible officer or function; governance provisions |
-| L7 Risk scoring | No enforcement source is in scope, so no obligation has enforcement events | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements |
+| L7 Risk scoring | No enforcement source is in scope, so no obligation has enforcement events (risk rests only on the penalties the texts state) | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements; the act's penalty provisions, if they are not in scope |
 | L8 Practices | No guidance source is in scope, so no component has a guidance-derived practice | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals |
 
 News coverage can point you to one of these official sources, but it is never used as evidence. Register the official source it refers to.

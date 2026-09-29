@@ -38,6 +38,7 @@ def derived_tables() -> list:
             d.activities, d.implies, d.operates, d.mitigates,
             d.blueprints, d.blueprint_items, d.minimality_proofs,
             l7.enforcement_events, l7.enforcement_links, l7.risk_scores, l7.risk_calibrations,
+            l7.stated_penalties, l7.penalty_links,
             layer_builds.layer_builds, record.why_trails, ids.id_sequences]
 
 

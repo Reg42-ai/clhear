@@ -9,9 +9,13 @@ Tables (all bi-temporal, shared columns attached — I2, I3):
   cites verbatim, and the L1 clause it was read from.
 * ``enforcement_links`` — event → obligation edges (the linker's output) with the
   citation that justified each link, the method and a confidence.
-* ``risk_scores`` (``RSK-``) — per obligation or blueprint item: the six published
+* ``risk_scores`` (``RSK-``) — per obligation or blueprint item: the seven published
   dimensions, the composite, the band, the calibration set the likelihood was
   fitted on and the evidence (event ids, counts, amounts) the score rests on.
+* ``stated_penalties`` (``PEN-``) — a penalty a binding text states for a breach:
+  its type and the maximum stated, quoted from the clause (``l7.penalties``).
+* ``penalty_links`` — penalty → obligation edges: the obligations whose provisions
+  the penalty clause refers to, with the words that refer to them.
 * ``risk_calibrations`` — append-only: every held-out-year calibration run with
   its Brier score, the base-rate baseline and the reliability table — the
   number the method page publishes.
@@ -32,16 +36,19 @@ metadata = sa.MetaData()
 Json = sa.JSON().with_variant(JSONB(), "postgresql")
 BigId = sa.BigInteger().with_variant(sa.Integer, "sqlite")
 
-METHOD_VERSION = "risk-v2"
+METHOD_VERSION = "risk-v3"
 
 # Published dimension weights (sum to 1). Changing them is a new METHOD_VERSION.
+# Enforcement events (history, likelihood, financial and reputational impact) are the
+# stronger input; a penalty the texts state is a separate, lighter one.
 WEIGHTS: dict[str, float] = {
-    "enforcement_history": 0.30,
+    "enforcement_history": 0.25,
     "likelihood": 0.20,
-    "financial_impact": 0.20,
+    "financial_impact": 0.15,
     "reputational_impact": 0.10,
     "operational_impact": 0.10,
     "regulatory_attention": 0.10,
+    "stated_penalty": 0.10,
 }
 DIMENSIONS: tuple[str, ...] = tuple(WEIGHTS)
 
@@ -57,6 +64,9 @@ DIMENSION_NOTES: dict[str, str] = {
                           "triggers, scaled against the corpus maximum.",
     "regulatory_attention": "L2 change events on the obligation's source in the last two years plus thematic "
                             "enforcement volume by the same regulator, scaled.",
+    "stated_penalty": "The most severe penalty the binding texts in scope state for breaching the obligation "
+                      "(imprisonment, then disqualification or revocation, suspension, fine or penalty, with the "
+                      "log-scaled monetary maximum), scaled; present even with no enforcement source in scope.",
 }
 
 BANDS: tuple[tuple[str, float], ...] = (("critical", 0.75), ("high", 0.55), ("medium", 0.35), ("low", 0.0))
@@ -123,6 +133,51 @@ enforcement_links = sa.Table(
     schema=L7_SCHEMA,
 )
 
+PENALTY_TYPES = ("imprisonment", "disqualification", "revocation", "suspension", "fine", "penalty")
+PENALTY_LINK_METHODS = ("reference", "relative", "whole_text", "division")
+
+stated_penalties = sa.Table(
+    "stated_penalties",
+    metadata,
+    # (id, version) is the key, as for enforcement events: a penalty that reappears after
+    # it was closed is a new version of the same PEN- id.
+    sa.Column("id", sa.Text, primary_key=True),  # PEN-<hash of source, clause, type and clause text>
+    sa.Column("version", sa.Integer, primary_key=True, nullable=False, default=1, server_default="1"),
+    sa.Column("source_key", sa.Text, nullable=False, index=True),  # the binding L1 source that states it
+    sa.Column("clause_ref", sa.Text, nullable=False, default=""),
+    sa.Column("clause_id", BigId, nullable=True),
+    sa.Column(
+        "penalty_type",
+        sa.Text,
+        sa.CheckConstraint("penalty_type in (" + ",".join(f"'{t}'" for t in PENALTY_TYPES) + ")",
+                           name="stated_penalties_type_check"),
+        nullable=False,
+    ),
+    sa.Column("maximum", sa.Text, nullable=False, default=""),  # the maximum as the clause states it
+    sa.Column("amount", sa.Numeric(18, 2, asdecimal=False), nullable=True),
+    sa.Column("unit", sa.Text, nullable=False, default=""),  # units, a currency, years, months …
+    sa.Column("evidence", Json, nullable=False, default=dict),  # quotes: the penalty words and the maximum
+    sa.Column("text_hash", sa.Text, nullable=False, default=""),
+    schema=L7_SCHEMA,
+)
+
+penalty_links = sa.Table(
+    "penalty_links",
+    metadata,
+    sa.Column("id", BigId, primary_key=True, autoincrement=True),
+    sa.Column("penalty_id", sa.Text, nullable=False, index=True),
+    sa.Column("obligation_id", sa.Text, nullable=False, index=True),
+    sa.Column(
+        "method",
+        sa.Text,
+        sa.CheckConstraint("method in (" + ",".join(f"'{m}'" for m in PENALTY_LINK_METHODS) + ")",
+                           name="penalty_links_method_check"),
+        nullable=False,
+    ),
+    sa.Column("via", Json, nullable=True),  # the quote in the penalty clause that refers to the obligation
+    schema=L7_SCHEMA,
+)
+
 risk_scores = sa.Table(
     "risk_scores",
     metadata,
@@ -165,8 +220,8 @@ risk_calibrations = sa.Table(
     schema=L7_SCHEMA,
 )
 
-L7_TABLES = (enforcement_events, enforcement_links, risk_scores, risk_calibrations)
-attach_shared_columns(enforcement_events, enforcement_links, risk_scores)
+L7_TABLES = (enforcement_events, enforcement_links, risk_scores, risk_calibrations, stated_penalties, penalty_links)
+attach_shared_columns(enforcement_events, enforcement_links, risk_scores, stated_penalties, penalty_links)
 
 
 def band_for(composite: float) -> str:
@@ -182,7 +237,7 @@ def method() -> dict:
         "method_version": METHOD_VERSION,
         "weights": dict(WEIGHTS),
         "dimensions": [{"key": k, "weight": WEIGHTS[k], "note": DIMENSION_NOTES[k]} for k in DIMENSIONS],
-        "composite": "sum(weight_d * dimension_d) over the six dimensions; every dimension is scaled 0..1 "
+        "composite": "sum(weight_d * dimension_d) over the seven dimensions; every dimension is scaled 0..1 "
                      "against the corpus so the composite is comparable across jurisdictions",
         "bands": [{"band": b, "from": f} for b, f in BANDS],
         "likelihood": "P(enforcement linked to the obligation in the next 12 months) = sigmoid(a + b*history + "
@@ -197,6 +252,7 @@ def method() -> dict:
 
 __all__ = [
     "BANDS", "DIMENSIONS", "DIMENSION_NOTES", "EVENT_KINDS", "L7_SCHEMA", "L7_TABLES", "LINK_METHODS",
-    "METHOD_VERSION", "SUBJECT_KINDS", "WEIGHTS", "band_for", "enforcement_events", "enforcement_links",
-    "metadata", "method", "risk_calibrations", "risk_scores",
+    "METHOD_VERSION", "PENALTY_LINK_METHODS", "PENALTY_TYPES", "SUBJECT_KINDS", "WEIGHTS", "band_for",
+    "enforcement_events", "enforcement_links", "metadata", "method", "penalty_links", "risk_calibrations",
+    "risk_scores", "stated_penalties",
 ]

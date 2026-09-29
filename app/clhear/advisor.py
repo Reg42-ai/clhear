@@ -133,8 +133,10 @@ ADVICE: dict[str, dict] = {
     },
     "no_enforcement_sources": {
         "layer": "L7",
-        "missing": "No enforcement source is in scope, so no obligation has enforcement events and risk cannot be scored.",
-        "summary": "Add the regulator's published enforcement record for these texts.",
+        "missing": "No enforcement source is in scope, so no obligation has enforcement events: risk rests only on "
+                   "the penalties the texts in scope state, if any.",
+        "summary": "Add the regulator's published enforcement record for these texts, and the penalty provisions of "
+                   "the act if they are not in scope.",
         "add": [
             _add("Enforcement actions, consent orders and settlements", "enforcement",
                  "Each enforcement event ties a breached obligation to a consequence; risk scores are built from these links."),
@@ -142,6 +144,9 @@ ADVICE: dict[str, dict] = {
                  "They show which obligations are enforced and how severely."),
             _add("Published breach reports, resolution agreements or corrective action plans", "enforcement",
                  "They show recurring failures and the remediation the regulator ordered."),
+            _add("The act's penalty provisions (its offences, penalties and sanctions), in full", "law",
+                 "Each penalty they state is quoted with its type and maximum and linked to the obligations it "
+                 "refers to, so L7 scores risk from it even without enforcement records."),
         ],
     },
     "no_reference_sources": {

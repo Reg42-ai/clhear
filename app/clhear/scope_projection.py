@@ -108,6 +108,10 @@ def project(conn: Connection, scope_name: str | None = None) -> dict | None:
             scores.append(row)
     event_ids = {row["id"] for row in events}
     links = [row for row in _load(conn, l7.enforcement_links) if row["event_id"] in event_ids and row["obligation_id"] in ob_ids]
+    penalties = [row for row in _load(conn, l7.stated_penalties) if row["source_key"] in chosen]
+    penalty_ids = {row["id"] for row in penalties}
+    penalty_links = [row for row in _load(conn, l7.penalty_links)
+                     if row["penalty_id"] in penalty_ids and row["obligation_id"] in ob_ids]
     calibrations = _load(conn, l7.risk_calibrations, l7.risk_calibrations.c.published.is_(True))
     builds = _load(conn, layer_builds.layer_builds, layer_builds.layer_builds.c.scope == scope_name)
 
@@ -129,6 +133,7 @@ def project(conn: Connection, scope_name: str | None = None) -> dict | None:
         (d.blueprints, blueprints), (d.blueprint_items, items), (d.minimality_proofs, proofs),
         (l7.enforcement_events, events), (l7.enforcement_links, links),
         (l7.risk_scores, scores), (l7.risk_calibrations, calibrations),
+        (l7.stated_penalties, penalties), (l7.penalty_links, penalty_links),
         (layer_builds.layer_builds, builds),
     ]
     present = set()
@@ -142,7 +147,7 @@ def project(conn: Connection, scope_name: str | None = None) -> dict | None:
         present.add("L5")
     if blueprints:
         present.add("L6")
-    if scores or events:
+    if scores or events or penalties:
         present.add("L7")
     present.add("L8")
     return {

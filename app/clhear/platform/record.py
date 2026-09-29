@@ -92,7 +92,8 @@ def layer_tables() -> list[sa.Table]:
 
     tables: list[sa.Table] = list(l1_models.ALL_TABLES) + list(derived_models.DERIVED_TABLES)
     tables += [risk_narratives, cohorts]
-    tables += [l7_models.enforcement_events, l7_models.enforcement_links, l7_models.risk_scores]
+    tables += [l7_models.enforcement_events, l7_models.enforcement_links, l7_models.risk_scores,
+               l7_models.stated_penalties, l7_models.penalty_links]
     tables += [l8_models.fills, l8_models.benchmark_aggregates]
     for loader in _EXTRA_LAYER_TABLE_LOADERS:
         tables += list(loader())
