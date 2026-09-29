@@ -115,6 +115,9 @@ def test_from_texts_to_a_blueprint_with_the_command_line(cli, capsys):
     assert {"no_enforcement_sources", "no_licence_types"} <= set(advice)
     assert advice["no_enforcement_sources"]["add"][0]["published_by"] == "Example Authority"
     assert advice["no_enforcement_sources"]["add"][0]["register_as"] == "enforcement"
+    assert run("sources", "advise", "--scope", "sites") == 0
+    shown = capsys.readouterr().out
+    assert "Sources:" in shown and "derived" in shown and "rule (regulation)" in shown
 
 
 def test_a_scope_without_duties_is_told_to_add_the_binding_text(cli, capsys):

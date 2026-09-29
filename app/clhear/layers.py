@@ -64,7 +64,9 @@ LAYER_CATALOG: dict[str, dict] = {
             "method": "Deterministic fetch -> parse -> hash -> diff. Adapters retrieve the "
             "official artifact from the issuing authority (legislation.gov.uk, EUR-Lex, "
             "govinfo/eCFR, NIST); the pipeline stores originals in WORM S3, versions the "
-            "text, aligns clauses by ref and emits clause-level change events. Source "
+            "text, aligns clauses by ref and emits clause-level change events. Every mention of "
+            "another text or provision is recorded with its quote and offsets; a build resolves the "
+            "mentions against its scope and names each cited text it does not hold. Source "
             "text is NEVER generated, cleaned up, or summarized into the record.",
             "generation": {
                 "nature": "reproduction, zero generation",
@@ -169,12 +171,14 @@ LAYER_CATALOG: dict[str, dict] = {
             "method": "Each duty's edges are read from its own words: the jurisdiction its source "
             "declares, the addressee it names unless that is everyone, and its condition when the "
             "condition is about the addressee. Licence types are read only from the scope's licensing "
-            "clauses and kept only in their words. A profile answers the questions; a duty applies, is "
+            "clauses and the entries of its registers (sources of kind register), and kept only in their "
+            "words; they are the permitted values of the profile's licences. A profile answers the questions; a duty applies, is "
             "not applicable, or is undetermined while a question is unanswered. Candidate business profiles "
             "are offered per quoted role and per quoted licence type.",
             "generation": {
                 "nature": "deterministic reading of the duty's grammar; LLM confined to quoting licence types",
-                "technique": "Subject / condition quotes; three-valued evaluation; licensing-clause extraction with a quote check",
+                "technique": "Subject / condition quotes; three-valued evaluation; licensing-clause extraction with a "
+                             "quote check; register entries read as labelled fields or table columns, quoted",
                 "guarantee": "Every applies_to edge quotes the words it was read from; no role, condition or licence exists that is not in the texts in scope",
                 "may": ["quote a licence type from a licensing clause"],
                 "must_not": ["invent a role, condition or licence", "decide an unanswered question"],
@@ -271,10 +275,13 @@ LAYER_CATALOG: dict[str, dict] = {
             "and linked to the L2 obligations they cite. Each obligation's score weighs "
             "published dimensions: recency-weighted enforcement history, a likelihood calibrated "
             "on past years and scored on a held-out year, financial and reputational impact of "
-            "the linked outcomes, L2 change velocity, and L3/L5 operational reach. A company's "
+            "the linked outcomes, L2 change velocity, L3/L5 operational reach, and the most severe "
+            "penalty the binding texts in scope state for a breach (type and maximum, quoted, linked to the "
+            "obligations the penalty clause refers to). A company's "
             "item priority is a view that lays these scores onto its L6 blueprint items; no "
-            "score reads a blueprint. Every score publishes its weights, dimensions and evidence. Without an "
-            "enforcement source in scope the layer is not built and the source advice says what to add.",
+            "score reads a blueprint. Every score publishes its weights, dimensions and evidence. With no "
+            "enforcement source in scope the scores rest on the stated penalties alone, and the source advice "
+            "says what to add; with neither, the layer is not built.",
             "generation": {
                 "nature": "quantitative + grounded commentary",
                 "technique": "Formula-deterministic scores; number-echo narratives over a versioned facts file",
@@ -300,7 +307,9 @@ LAYER_CATALOG: dict[str, dict] = {
             "inputs": ["L1", "L3", "L7"],
             "method": "Each reference row is one in-force block of a public examination report or "
             "guidance publication in L1 (a regulator's FAQs, bulletins, inspection findings or decisions), "
-            "quoted exactly, and names the L3 block whose name, purpose and required obligations "
+            "or the remediation an enforcement source orders ('is ordered to', 'agreed to', corrective "
+            "action, a duty with a deadline); a clause that is the basis of an obligation is not a practice. "
+            "Each row is quoted exactly, and names the L3 block whose name, purpose and required obligations "
             "share the most words with it; a row that shares too little names no block. Peer "
             "aggregates combine L7 scores across participating organisations within a profile "
             "cluster, stay inside the enclave, and publish only as k-anonymous aggregates.",

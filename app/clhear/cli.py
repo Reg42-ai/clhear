@@ -270,7 +270,8 @@ def cmd_sources_add(args) -> int:
         adapter, locator = "local_text", {"text": Path(args.text_file).read_text(encoding="utf-8")}
     row = hoststore.upsert_source(_engine(), args.key, {
         "adapter": adapter, "locator": locator, "name": args.name or args.key, "kind": args.kind,
-        "jurisdiction": args.jurisdiction or "", "issuer": args.issuer or "", "licence": "open"})
+        "jurisdiction": args.jurisdiction or "", "issuer": args.issuer or "", "reference": args.reference or "",
+        "licence": "open"})
     print(f"registered {row['key']} ({adapter}, kind {row['kind']}"
           + (f", {row['jurisdiction']}" if row["jurisdiction"] else "") + ")")
     return 0
@@ -280,7 +281,8 @@ def cmd_sources_list(_args) -> int:
     from app.clhear import hoststore
 
     for row in hoststore.list_sources(_engine()):
-        print(f"{row['key']:<24} {row['adapter']:<12} {row['kind']:<12} {row['jurisdiction'] or '-':<6} {row['name']}")
+        reference = f"  [{row['reference']}]" if row.get("reference") else ""
+        print(f"{row['key']:<24} {row['adapter']:<12} {row['kind']:<12} {row['jurisdiction'] or '-':<6} {row['name']}{reference}")
     return 0
 
 
@@ -295,13 +297,17 @@ def cmd_sources_test(args) -> int:
 
 
 def cmd_sources_advise(args) -> int:
-    from app.clhear.advisor import advise
-    from app.clhear.first_run import advice_text
+    from app.clhear.advisor import advise, source_inventory
+    from app.clhear.first_run import advice_text, inventory_text
 
     keys = scopes.get(args.scope)["sources"]
     with _engine().connect() as conn:
         advice = advise(conn, args.scope, keys)
-    _print(advice) if args.json else print(advice_text(advice))
+        inventory = source_inventory(conn, args.scope, keys)
+    if args.json:
+        _print(advice)
+    else:
+        print("Sources:\n" + inventory_text(inventory) + "\n\n" + advice_text(advice))
     return 0
 
 
@@ -423,10 +429,13 @@ def build_parser() -> argparse.ArgumentParser:
     where.add_argument("--url", help="a public https page or PDF")
     where.add_argument("--text-file", help="a local text file whose contents are stored with the source")
     add.add_argument("--kind", default="regulation",
-                     help="law, regulation, standard, guidance, form, agreement or enforcement (default regulation)")
+                     help="law, regulation, standard, guidance, form, agreement, enforcement or register "
+                          "(default regulation)")
     add.add_argument("--jurisdiction", default="", help="the jurisdiction the text is law in, e.g. US or EU")
     add.add_argument("--publisher", "--issuer", dest="issuer", default="", help="who publishes it, e.g. the regulator")
     add.add_argument("--name", default="")
+    add.add_argument("--reference", default="",
+                     help="the publisher's own reference for the text (its number or citation), so clauses that cite it resolve")
     add.set_defaults(func=cmd_sources_add)
     sources.add_parser("list", help="list registered sources").set_defaults(func=cmd_sources_list)
     test = sources.add_parser("test", help="read a source and preview its clauses; stores nothing")

@@ -166,6 +166,10 @@ components:
           default: ''
           title: Name
           type: string
+        reference:
+          default: ''
+          title: Reference
+          type: string
         schedule:
           default: ''
           title: Schedule
@@ -210,6 +214,10 @@ components:
         name:
           default: ''
           title: Name
+          type: string
+        reference:
+          default: ''
+          title: Reference
           type: string
         schedule:
           default: ''

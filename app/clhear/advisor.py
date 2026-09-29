@@ -6,7 +6,9 @@ Every layer derives its records from the texts in scope. When a layer cannot,
 the build records an evidence gap (``app.clhear.evidence``). The advisor turns
 those gaps into advice a user can act on: the kinds of official source to add,
 why each one lets the layer derive records, and the source ``kind`` to register
-it as.
+it as. A text the clauses in scope cite but the scope does not hold is named as
+the clauses word it (``unresolved_reference``), and the source inventory lists
+every source in scope and every cited text with its status.
 
 The advice is the same for every sector. It never names a regulation or an
 authority from a list: when the sources in scope declare a publisher (the
@@ -19,8 +21,7 @@ from collections import OrderedDict
 import sqlalchemy as sa
 from sqlalchemy.engine import Connection
 
-# Source kinds a user can register (see api._SOURCE_KINDS).
-SOURCE_KINDS = ("law", "regulation", "standard", "guidance", "form", "agreement", "enforcement")
+from app.clhear.l1.models import SOURCE_KINDS  # noqa: F401  (the kinds a user can register)
 
 
 def _add(source: str, register_as: str, why: str) -> dict:
@@ -36,6 +37,16 @@ ADVICE: dict[str, dict] = {
         "add": [
             _add("The official publication of the text (HTML, or a PDF with a text layer; run OCR on scans)",
                  "regulation", "L1 can only split and keep text it can read."),
+        ],
+    },
+    "unresolved_reference": {
+        "layer": "L1",
+        "missing": "Clauses in scope cite '{cited}', which is not among the sources in scope.",
+        "summary": "Register '{cited}' as a source of kind '{register_as}' and add it to the scope.",
+        "add": [
+            _add("{cited}", "{register_as}",
+                 "The clauses that cite it depend on its text: with it in scope the reference resolves, and the "
+                 "obligations, definitions and penalties it holds are read."),
         ],
     },
     "no_duties": {
@@ -82,13 +93,19 @@ ADVICE: dict[str, dict] = {
     },
     "no_licence_types": {
         "layer": "L4",
-        "missing": "No licensing, registration, certification or authorisation regime is in scope.",
-        "summary": "If your activity needs a licence, registration or certification, add the text that establishes it.",
+        "missing": "No licensing, registration, certification or authorisation regime, and no register of licensed "
+                   "entities, is in scope.",
+        "summary": "If your activity needs a licence, registration or certification, add the text that establishes it "
+                   "or the official register that lists it.",
         "add": [
             _add("The licensing, registration or certification rules for your activity", "regulation",
                  "Licence types are read from these clauses and become profile attribute values and candidate organisation profiles."),
             _add("The scope-of-practice or authorisation provisions of the act", "law",
                  "They say who may carry on an activity, which separates one organisation profile from another."),
+            _add("The official register of licensed or authorised entities, or its list of licence categories",
+                 "register",
+                 "Each licence type a register entry names is read with its quote and becomes a permitted value of "
+                 "the profile's licences and a candidate organisation profile."),
         ],
     },
     "role_undefined": {
@@ -116,8 +133,10 @@ ADVICE: dict[str, dict] = {
     },
     "no_enforcement_sources": {
         "layer": "L7",
-        "missing": "No enforcement source is in scope, so no obligation has enforcement events and risk cannot be scored.",
-        "summary": "Add the regulator's published enforcement record for these texts.",
+        "missing": "No enforcement source is in scope, so no obligation has enforcement events: risk rests only on "
+                   "the penalties the texts in scope state, if any.",
+        "summary": "Add the regulator's published enforcement record for these texts, and the penalty provisions of "
+                   "the act if they are not in scope.",
         "add": [
             _add("Enforcement actions, consent orders and settlements", "enforcement",
                  "Each enforcement event ties a breached obligation to a consequence; risk scores are built from these links."),
@@ -125,12 +144,15 @@ ADVICE: dict[str, dict] = {
                  "They show which obligations are enforced and how severely."),
             _add("Published breach reports, resolution agreements or corrective action plans", "enforcement",
                  "They show recurring failures and the remediation the regulator ordered."),
+            _add("The act's penalty provisions (its offences, penalties and sanctions), in full", "law",
+                 "Each penalty they state is quoted with its type and maximum and linked to the obligations it "
+                 "refers to, so L7 scores risk from it even without enforcement records."),
         ],
     },
     "no_reference_sources": {
         "layer": "L8",
-        "missing": "No guidance source is in scope, so no component has a guidance-derived practice.",
-        "summary": "Add the regulator's interpretive material and decisions on these texts.",
+        "missing": "No guidance or enforcement source is in scope, so no component has a practice.",
+        "summary": "Add the regulator's interpretive material, decisions and enforcement actions on these texts.",
         "add": [
             _add("The regulator's FAQs and official Q&As", "guidance",
                  "They answer how an obligation is met in practice; each answer is quoted against the component it informs."),
@@ -142,6 +164,9 @@ ADVICE: dict[str, dict] = {
                  "Decisions settle how an obligation is read when it is contested."),
             _add("The official gazette or journal issues that publish amendments and notices", "guidance",
                  "They keep the texts current and announce new requirements."),
+            _add("Enforcement actions or resolution agreements that order remediation", "enforcement",
+                 "The remediation a regulator orders is a practice for the component it concerns; each order is "
+                 "quoted against that component."),
         ],
         "note": "News coverage may point you to one of these official sources, but it is never used as evidence.",
     },
@@ -154,12 +179,18 @@ ADVICE: dict[str, dict] = {
 }
 
 
+# What a placeholder reads as when the gap does not say (advice about several records at once).
+_DEFAULTS = {"field": "this characteristic", "role": "this role", "cited": "the cited text", "register_as": "law"}
+
+
+class _Filled(dict):
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
 def _fill(value, detail: dict):
     if isinstance(value, str):
-        try:
-            return value.format(**detail)
-        except (KeyError, IndexError):
-            return value.replace("{field}", "this characteristic").replace("{role}", "this role")
+        return value.format_map(_Filled({**_DEFAULTS, **{k: v for k, v in detail.items() if v not in (None, "")}}))
     if isinstance(value, list):
         return [_fill(v, detail) for v in value]
     if isinstance(value, dict):
@@ -184,7 +215,7 @@ def advice_for(kind: str, *, issuers: list[str] | None = None, **detail) -> dict
     if issuers:
         named = ", ".join(issuers)
         for item in out["add"]:
-            if item["register_as"] in ("guidance", "enforcement", "regulation"):
+            if item["register_as"] in ("law", "regulation", "guidance", "enforcement", "register"):
                 item["published_by"] = named
     return out
 
@@ -200,7 +231,11 @@ def summarise(gaps: list[dict], *, issuers: list[str] | None = None, extra: list
     """Advice per gap kind, in layer order: the advice once, with how many records
     it concerns and a few examples."""
     grouped: OrderedDict[str, dict] = OrderedDict()
+    cited: list[dict] = []
     for gap in gaps:
+        if gap["kind"] == "unresolved_reference":
+            cited.append(_cited_advice(gap))
+            continue
         slot = grouped.setdefault(gap["kind"], {"count": 0, "examples": [], "detail": gap.get("detail") or {}})
         slot["count"] += 1
         if len(slot["examples"]) < 5:
@@ -218,7 +253,66 @@ def summarise(gaps: list[dict], *, issuers: list[str] | None = None, extra: list
             continue
         out.append({**advice, "count": slot["count"], "examples": slot["examples"]})
     order = {f"L{i}": i for i in range(1, 9)}
-    return sorted(out, key=lambda a: (order.get(a["layer"], 9), a["gap"]))
+    return sorted(out + cited, key=lambda a: (order.get(a["layer"], 9), a["gap"], a.get("cited", "")))
+
+
+def _cited_advice(gap: dict) -> dict:
+    """One piece of advice per text the clauses cite but the scope does not hold,
+    naming it as the clauses word it, with every clause that cites it."""
+    detail = gap.get("detail") or {}
+    cited = detail.get("cited") or gap["subject"]
+    cited_by = list(detail.get("cited_by") or [])
+    advice = advice_for("unresolved_reference", cited=cited, register_as=detail.get("register_as") or "law")
+    item = advice["add"][0]
+    item["cited_by"] = cited_by
+    if detail.get("registered_as"):
+        item["registered_as"] = detail["registered_as"]
+        advice["summary"] = f"'{cited}' is registered as '{detail['registered_as']}' but is not in this scope: add it to the scope."
+    return {**advice, "cited": cited, "count": len(cited_by) or 1,
+            "examples": [{"subject": gap["subject"], "source_key": q.get("source_key"), "clause_ref": q.get("clause_ref"),
+                          "missing": gap.get("missing")} for q in cited_by[:5]]}
+
+
+STATUS_ORDER = {"derived": 0, "pending": 1, "unresolved": 2}
+MAX_CITING = 20
+
+
+def source_inventory(conn: Connection, scope: str | None, source_keys) -> list[dict]:
+    """Every source in scope, and every text their clauses cite that the scope does not hold.
+
+    ``status`` is ``derived`` (its text is stored and the layers read it),
+    ``pending`` (registered but not built: not read yet or unreadable, or cited
+    and registered but not in this scope) or ``unresolved`` (cited, not
+    registered). A missing source is thereby told apart from one that does not
+    apply."""
+    from app.clhear import evidence
+    from app.clhear.l1 import references
+
+    keys = sorted(set(source_keys or []))
+    registry = references.registered(conn)
+    stored = references.stored_clauses(conn, keys)
+    unread = {g["subject"]: g["missing"] for g in (evidence.gaps_for(conn, scope) if scope else [])
+              if g["kind"] == "no_text"}
+    resolved = references.resolve(conn, keys)
+    citing = references.cited_in_scope(resolved)
+    out = []
+    for key in keys:
+        known = registry.get(key) or {}
+        entry = {"status": "derived" if stored.get(key) else "pending", "source_key": key,
+                 "name": known.get("name") or key, "kind": known.get("kind") or "",
+                 "reference": known.get("reference") or "", "clauses": stored.get(key, 0),
+                 "cited_by": citing.get(key, [])[:MAX_CITING]}
+        if not stored.get(key):
+            entry["reason"] = unread.get(key) or "not read yet: run the scope"
+        out.append(entry)
+    for item in references.missing(conn, keys, resolved):
+        entry = {"status": "pending" if item["registered_as"] else "unresolved", "source_key": item["registered_as"],
+                 "cited_as": item["cited_as"], "register_as": item["register_as"],
+                 "cited_by": item["cited_by"][:MAX_CITING]}
+        if item["registered_as"]:
+            entry["reason"] = "registered but not in this scope"
+        out.append(entry)
+    return sorted(out, key=lambda e: (STATUS_ORDER[e["status"]], e.get("source_key") or "", e.get("cited_as") or ""))
 
 
 def advise(conn: Connection, scope: str, source_keys=None) -> list[dict]:
