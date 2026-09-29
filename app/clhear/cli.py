@@ -425,7 +425,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--kind", default="regulation",
                      help="law, regulation, standard, guidance, form, agreement or enforcement (default regulation)")
     add.add_argument("--jurisdiction", default="", help="the jurisdiction the text is law in, e.g. US or EU")
-    add.add_argument("--issuer", default="", help="who publishes it, e.g. the regulator")
+    add.add_argument("--publisher", "--issuer", dest="issuer", default="", help="who publishes it, e.g. the regulator")
     add.add_argument("--name", default="")
     add.set_defaults(func=cmd_sources_add)
     sources.add_parser("list", help="list registered sources").set_defaults(func=cmd_sources_list)

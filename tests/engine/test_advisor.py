@@ -86,7 +86,7 @@ def test_from_texts_to_a_blueprint_with_the_command_line(cli, capsys):
     assert run("profile", "questions", "--scope", "sites") == 0
     asked = capsys.readouterr().out
     assert "operator" in asked and "site manager" in asked and "stores visitor records electronically" in asked
-    assert "Profiles you can start from" in asked and "You are 'operator'" in asked
+    assert "Candidate organization profiles" in asked and "You are 'operator'" in asked
 
     assert run("profile", "questions", "--scope", "sites", "--json") == 0
     schema = json.loads(capsys.readouterr().out)

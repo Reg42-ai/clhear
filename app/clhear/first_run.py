@@ -62,12 +62,12 @@ def questions_text(schema: dict) -> str:
     if schema.get("note"):
         lines.append(schema["note"])
     lines.append(f"\nJurisdictions the sources declare: {', '.join(asked.get('jurisdictions') or []) or 'none'}")
-    lines.append("\nRoles the duties are addressed to (answer with \"roles\"):")
+    lines.append("\nRoles the obligations are addressed to (answer with \"roles\"):")
     for r in asked.get("roles") or []:
-        lines += [f"- {r['role']}  ({len(r['duties'])} duties)", _quote(r)]
-    lines.append("\nConditions the duties depend on (answer with \"conditions\": {fact: true|false}):")
+        lines += [f"- {r['role']}  ({len(r['duties'])} obligations)", _quote(r)]
+    lines.append("\nConditions the obligations depend on (answer with \"conditions\": {fact: true|false}):")
     for c in asked.get("conditions") or []:
-        lines += [f"- {c['fact']}  [{c['id']}]  ({len(c['duties'])} duties)", _quote(c)]
+        lines += [f"- {c['fact']}  [{c['id']}]  ({len(c['duties'])} obligations)", _quote(c)]
     lines.append("\nLicence types the texts establish (answer with \"licences\"):")
     for lic in asked.get("licences") or []:
         lines.append(f"- {lic['name']} ({lic['jurisdiction']})")
@@ -75,7 +75,7 @@ def questions_text(schema: dict) -> str:
         lines.append("- none in scope")
     candidates = schema.get("candidates") or []
     if candidates:
-        lines.append("\nProfiles you can start from:")
+        lines.append("\nCandidate organization profiles to start from:")
         for c in candidates:
             lines.append(f"- {c['name']}: {c['attributes']}")
             for q in c.get("to_answer") or []:
@@ -101,16 +101,16 @@ def advice_text(advice: list[dict]) -> str:
 
 
 def blueprint_text(bp: dict) -> str:
-    """A blueprint as plain text: measures, duties by state, open questions, gaps and advice."""
+    """A reference blueprint as plain text: elements, obligations by state, open questions, gaps and advice."""
     summary = bp.get("coverage_summary") or {}
-    lines = [f"Blueprint {bp.get('blueprint_id')} for {bp.get('profile_id')}"
+    lines = [f"Reference blueprint {bp.get('blueprint_id')} for {bp.get('profile_id')}"
              + (" (offline sample)" if bp.get("sample") else ""),
-             f"Duties: {summary.get('covered', 0)} covered, {summary.get('gaps', 0)} gaps, "
+             f"Obligations: {summary.get('covered', 0)} covered, {summary.get('gaps', 0)} gaps, "
              f"{summary.get('not_applicable', 0)} not applicable, {summary.get('undetermined', 0)} undetermined",
-             "\nMeasures:"]
+             "\nComponents:"]
     for item in bp.get("items") or []:
-        lines.append(f"- {item['name']} [{item.get('kind')}] ({item['basis']}) for {len(item['obligations_satisfied'])} duties")
-    lines.append("\nDuties that apply:")
+        lines.append(f"- {item['name']} [{item.get('kind')}] ({item['basis']}) for {len(item['obligations_satisfied'])} obligations")
+    lines.append("\nObligations that apply:")
     for c in bp.get("coverage") or []:
         lines.append(f"- {c['state']:<8} {c['source_key']} {c['clause_ref']}: {' '.join((c.get('duty') or '').split())[:110]}")
     if bp.get("not_applicable"):
@@ -118,9 +118,9 @@ def blueprint_text(bp: dict) -> str:
         for n in bp["not_applicable"]:
             lines.append(f"- {n['source_key']} {n['clause_ref']}: {n['because'][0]['rationale'] if n['because'] else ''}")
     if bp.get("open_questions"):
-        lines.append("\nOpen questions (answer them in the profile, then run again):")
+        lines.append("\nOpen questions (answer them in the organization profile, then run again):")
         for q in bp["open_questions"]:
-            lines.append(f"- {q['ask']}  ({len(q['duties'])} duties)")
+            lines.append(f"- {q['ask']}  ({len(q['duties'])} obligations)")
     if bp.get("source_advice"):
         lines.append("\nSources to add:")
         lines.append(advice_text(bp["source_advice"]))

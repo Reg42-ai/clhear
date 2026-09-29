@@ -89,7 +89,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L2": {
         "slug": "l2",
-        "name": "Obligation registry",
+        "name": "Obligations",
         "schema": "l2_obligations",
         "published": False,
         "status": "derived",
@@ -126,7 +126,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L3": {
         "slug": "l3",
-        "name": "Building blocks",
+        "name": "Components",
         "schema": "l3_building_blocks",
         "published": False,
         "status": "derived",
@@ -157,7 +157,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L4": {
         "slug": "l4",
-        "name": "Applicability",
+        "name": "Profile attributes and applicability",
         "schema": "l4_profiles",
         "published": False,
         "status": "derived",
@@ -189,7 +189,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L5": {
         "slug": "l5",
-        "name": "Activities",
+        "name": "Compliance activities",
         "schema": "l5_activities",
         "published": False,
         "status": "derived",
@@ -218,7 +218,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L6": {
         "slug": "l6",
-        "name": "Program composer",
+        "name": "Composition and reference blueprints",
         "schema": "l6_composer",
         "published": False,
         "status": "computed",
@@ -289,7 +289,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L8": {
         "slug": "l8",
-        "name": "Benchmarks",
+        "name": "Practices",
         "schema": "l8_benchmarks",
         "published": False,
         "status": "reference",
