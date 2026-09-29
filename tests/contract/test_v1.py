@@ -50,6 +50,7 @@ def test_openapi_paths_match_the_contract():
         "/v1/runs/{run_id}/logs",
         "/v1/scopes",
         "/v1/scopes/{name}",
+        "/v1/scopes/{name}/advice",
         "/v1/sources",
         "/v1/sources/{key}",
         "/v1/sources/{key}/test-fetch",

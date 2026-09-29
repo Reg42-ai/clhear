@@ -89,7 +89,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L2": {
         "slug": "l2",
-        "name": "Obligation registry",
+        "name": "Obligations",
         "schema": "l2_obligations",
         "published": False,
         "status": "derived",
@@ -126,7 +126,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L3": {
         "slug": "l3",
-        "name": "Building blocks",
+        "name": "Components",
         "schema": "l3_building_blocks",
         "published": False,
         "status": "derived",
@@ -157,7 +157,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L4": {
         "slug": "l4",
-        "name": "Applicability",
+        "name": "Profile attributes and applicability",
         "schema": "l4_profiles",
         "published": False,
         "status": "derived",
@@ -170,7 +170,8 @@ LAYER_CATALOG: dict[str, dict] = {
             "declares, the addressee it names unless that is everyone, and its condition when the "
             "condition is about the addressee. Licence types are read only from the scope's licensing "
             "clauses and kept only in their words. A profile answers the questions; a duty applies, is "
-            "not applicable, or is undetermined while a question is unanswered.",
+            "not applicable, or is undetermined while a question is unanswered. Candidate business profiles "
+            "are offered per quoted role and per quoted licence type.",
             "generation": {
                 "nature": "deterministic reading of the duty's grammar; LLM confined to quoting licence types",
                 "technique": "Subject / condition quotes; three-valued evaluation; licensing-clause extraction with a quote check",
@@ -188,7 +189,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L5": {
         "slug": "l5",
-        "name": "Activities",
+        "name": "Compliance activities",
         "schema": "l5_activities",
         "published": False,
         "status": "derived",
@@ -217,7 +218,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L6": {
         "slug": "l6",
-        "name": "Program composer",
+        "name": "Composition and reference blueprints",
         "schema": "l6_composer",
         "published": False,
         "status": "computed",
@@ -272,7 +273,8 @@ LAYER_CATALOG: dict[str, dict] = {
             "on past years and scored on a held-out year, financial and reputational impact of "
             "the linked outcomes, L2 change velocity, and L3/L5 operational reach. A company's "
             "item priority is a view that lays these scores onto its L6 blueprint items; no "
-            "score reads a blueprint. Every score publishes its weights, dimensions and evidence.",
+            "score reads a blueprint. Every score publishes its weights, dimensions and evidence. Without an "
+            "enforcement source in scope the layer is not built and the source advice says what to add.",
             "generation": {
                 "nature": "quantitative + grounded commentary",
                 "technique": "Formula-deterministic scores; number-echo narratives over a versioned facts file",
@@ -287,7 +289,7 @@ LAYER_CATALOG: dict[str, dict] = {
     },
     "L8": {
         "slug": "l8",
-        "name": "Benchmarks",
+        "name": "Practices",
         "schema": "l8_benchmarks",
         "published": False,
         "status": "reference",
@@ -297,7 +299,7 @@ LAYER_CATALOG: dict[str, dict] = {
         "derivation": {
             "inputs": ["L1", "L3", "L7"],
             "method": "Each reference row is one in-force block of a public examination report or "
-            "guidance publication in L1 (for example SEC Division of Examinations risk alerts), "
+            "guidance publication in L1 (a regulator's FAQs, bulletins, inspection findings or decisions), "
             "quoted exactly, and names the L3 block whose name, purpose and required obligations "
             "share the most words with it; a row that shares too little names no block. Peer "
             "aggregates combine L7 scores across participating organisations within a profile "

@@ -1,6 +1,6 @@
 # Install
 
-This page is how you get a database, a model, and a private process. The [README](../README.md) explains sources, scopes, profiles, and how to read a blueprint. [How it works](how-it-works.md) walks through the pipeline.
+This page is how you get a database, a model, and a private process. The [README](../README.md) explains sources, scopes, organisation profiles, and how to read a reference blueprint. [How it works](how-it-works.md) walks through the pipeline.
 
 Python 3.12. Install a release tag (see [CHANGELOG.md](../CHANGELOG.md)), or `main` without `@…`:
 

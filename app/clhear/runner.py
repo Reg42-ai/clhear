@@ -32,6 +32,13 @@ def _check_profiles(engine: Engine, profiles: list[dict]) -> None:
         raise ValueError("Invalid profile: " + " | ".join(problems))
 
 
+def _scope_advice(engine: Engine) -> list[dict]:
+    from app.clhear.advisor import advise
+
+    with engine.connect() as conn:
+        return advise(conn, scopes.active_name(), scopes.source_keys())
+
+
 def _live(engine: Engine, llm, profiles: list[dict]) -> dict:
     _check_profiles(engine, profiles)
     report = scope_build.build(
@@ -58,6 +65,7 @@ def _live(engine: Engine, llm, profiles: list[dict]) -> dict:
         "sources": report.get("sources") or {},
         "failed_sources": report.get("failed_sources") or [],
         "lineage": report.get("lineage") or {},
+        "source_advice": _scope_advice(engine),
     }
 
 
@@ -115,7 +123,8 @@ def _execute(engine: Engine, run: dict, *, sender: Callable[[str, bytes, dict], 
                 hoststore.set_profile_engine_id(engine, item["host_id"], item["engine_id"])
         payload = _plain({"profiles": built["blueprints"], "layers": built["layers"],
                           "sources": built.get("sources") or {}, "failed_sources": built.get("failed_sources") or [],
-                          "lineage": built.get("lineage") or {}})
+                          "lineage": built.get("lineage") or {},
+                          "source_advice": built.get("source_advice") or []})
         release = hoststore.save_release(engine, scope=run["scope"], run_id=run["run_id"], blueprints=payload)
         finished = hoststore.finish_run(engine, run["run_id"], status="succeeded", release_id=release["id"])
         notify.emit(engine, "run.finished", {"run_id": run["run_id"], "release_id": release["id"]}, sender=sender)

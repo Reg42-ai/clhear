@@ -260,33 +260,11 @@ def _moved(found, moved: dict):
 
 # ----------------------------------------------------------------- evidence gaps
 
-# What to add when a record cannot be derived. Guidance about sources, never content.
-RECOMMEND = {
-    "no_measure": "The text states this duty without naming anything concrete to put in place. Add the "
-                  "implementing guidance, standard or code of practice that says how it is met.",
-    "measure_name_rejected": "A proposed measure name used words that are not in the text, so it was not kept. "
-                             "Add guidance that names the measure, or review the duty by hand.",
-    "operator_not_stated": "The text does not say who carries out this duty. Add the provision, guidance or "
-                           "internal allocation that assigns it.",
-    "characteristic_unspecified": "The text does not specify {field}. Add the guidance or standard that "
-                                  "specifies it for this duty.",
-    "role_undefined": "The texts use '{role}' but no definition of it is in scope. Add the definitions section "
-                      "or the act that defines who counts as '{role}'.",
-    "no_licence_types": "No licensing, registration or authorisation regime is in scope. If your activity needs "
-                        "one, add the text that establishes it.",
-    "no_enforcement_sources": "No enforcement source is in scope, so no duty carries an enforcement record. Add "
-                              "the regulator's published enforcement actions or decisions.",
-    "no_reference_sources": "No guidance or reference source is in scope. Add supervisory guidance, examination "
-                            "findings or a recognised standard to support how each measure is operated.",
-}
-
-
 def recommendation(kind: str, **detail) -> str:
-    template = RECOMMEND.get(kind, "")
-    try:
-        return template.format(**detail)
-    except (KeyError, IndexError):
-        return template
+    """What to add to L1 so the layer can derive this record (see ``app.clhear.advisor``)."""
+    from app.clhear.advisor import recommendation as advise
+
+    return advise(kind, **detail)
 
 
 def _gaps_table():

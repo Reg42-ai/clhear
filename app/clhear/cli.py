@@ -116,7 +116,10 @@ def cmd_run(args) -> int:
         _print({"run_id": run["run_id"], "status": run["status"]})
         return 0
     result = execute(handle, run)
-    _print({"run_id": run["run_id"], "status": result["run"]["status"], "release_id": result["release"]["id"]})
+    lineage = (result["release"].get("blueprints") or {}).get("lineage") or {}
+    _print({"run_id": run["run_id"], "status": result["run"]["status"], "release_id": result["release"]["id"],
+            "lineage": {"rows": lineage.get("rows"), "anchored": lineage.get("anchored"),
+                        "unanchored": len(lineage.get("unanchored") or [])}})
     return 0
 
 
@@ -252,6 +255,119 @@ def _load_json(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def cmd_sources_add(args) -> int:
+    from app.clhear import hoststore
+    from app.clhear.first_run import SOURCE_KINDS
+
+    if args.kind not in SOURCE_KINDS:
+        print(f"kind must be one of {', '.join(SOURCE_KINDS)}", file=sys.stderr)
+        return 1
+    if args.url:
+        adapter, locator = "url", {"url": args.url}
+    elif args.path:
+        adapter, locator = "local_text", {"path": args.path}
+    else:
+        adapter, locator = "local_text", {"text": Path(args.text_file).read_text(encoding="utf-8")}
+    row = hoststore.upsert_source(_engine(), args.key, {
+        "adapter": adapter, "locator": locator, "name": args.name or args.key, "kind": args.kind,
+        "jurisdiction": args.jurisdiction or "", "issuer": args.issuer or "", "licence": "open"})
+    print(f"registered {row['key']} ({adapter}, kind {row['kind']}"
+          + (f", {row['jurisdiction']}" if row["jurisdiction"] else "") + ")")
+    return 0
+
+
+def cmd_sources_list(_args) -> int:
+    from app.clhear import hoststore
+
+    for row in hoststore.list_sources(_engine()):
+        print(f"{row['key']:<24} {row['adapter']:<12} {row['kind']:<12} {row['jurisdiction'] or '-':<6} {row['name']}")
+    return 0
+
+
+def cmd_sources_test(args) -> int:
+    from app.clhear.first_run import preview
+
+    found = preview(_engine(), args.key)
+    print(f"{found['clauses']} clauses read ({found['bytes']} bytes)")
+    for c in found["preview"]:
+        print(f"  {c['clause_ref']:<12} {c['text'][:100]}")
+    return 0 if found["clauses"] else 1
+
+
+def cmd_sources_advise(args) -> int:
+    from app.clhear.advisor import advise
+    from app.clhear.first_run import advice_text
+
+    keys = scopes.get(args.scope)["sources"]
+    with _engine().connect() as conn:
+        advice = advise(conn, args.scope, keys)
+    _print(advice) if args.json else print(advice_text(advice))
+    return 0
+
+
+def cmd_scope_create(args) -> int:
+    scope = scopes.put(args.name, list(args.sources))
+    print(f"scope {scope['name']}: {', '.join(scope['sources'])}")
+    return 0
+
+
+def cmd_profile_questions(args) -> int:
+    from app.clhear.first_run import questions_text
+    from app.clhear.l4.validate import profile_schema
+
+    with _engine().connect() as conn:
+        schema = profile_schema(conn, args.scope)
+    _print(schema) if args.json else print(questions_text(schema))
+    return 0
+
+
+def _answer(pair: str) -> tuple[str, bool]:
+    fact, _, value = pair.rpartition("=")
+    if not fact or value.lower() not in ("true", "false", "yes", "no"):
+        raise ValueError(f"--condition takes 'fact=true' or 'fact=false', not {pair!r}")
+    return fact.strip(), value.lower() in ("true", "yes")
+
+
+def cmd_profile_set(args) -> int:
+    from app.clhear.first_run import put_profile
+
+    attributes = _load_json(args.file) if args.file else {}
+    attributes = attributes.get("attributes", attributes)
+    if args.jurisdiction:
+        attributes["jurisdictions"] = list(args.jurisdiction)
+    if args.role:
+        attributes["roles"] = list(args.role)
+    if args.not_role:
+        roles = attributes.get("roles") or []
+        roles = {r: True for r in roles} if isinstance(roles, list) else dict(roles)
+        attributes["roles"] = {**roles, **{r: False for r in args.not_role}}
+    if args.condition:
+        attributes["conditions"] = {**(attributes.get("conditions") or {}), **dict(_answer(c) for c in args.condition)}
+    if args.licence:
+        attributes["licences"] = list(args.licence)
+    stored = put_profile(_engine(), args.profile_id, name=args.name or args.profile_id, attributes=attributes)
+    _print({"profile_id": args.profile_id, "attributes": attributes, "validation": stored["validation"]})
+    return 0 if stored["validation"]["valid"] else 1
+
+
+def cmd_blueprint_show(args) -> int:
+    from app.clhear import hoststore
+    from app.clhear.api import _public_blueprint
+    from app.clhear.first_run import blueprint_text
+
+    row = hoststore.get_release(_engine(), args.release)
+    if row is None:
+        print(f"unknown release {args.release}", file=sys.stderr)
+        return 1
+    body = row["blueprints"] if isinstance(row["blueprints"], dict) else {}
+    composition = (body.get("profiles") or {}).get(args.profile)
+    if composition is None:
+        print(f"no blueprint for {args.profile} in {args.release}", file=sys.stderr)
+        return 1
+    print(blueprint_text(_public_blueprint(composition, profile_id=args.profile)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="clhear",
@@ -297,6 +413,59 @@ def build_parser() -> argparse.ArgumentParser:
     compose = sub.add_parser("compose", help="compose a blueprint for a stored organisation profile")
     compose.add_argument("--profile", required=True)
     compose.set_defaults(func=cmd_compose)
+
+    sources = sub.add_parser("sources", help="register the official texts you want read").add_subparsers(
+        dest="sources_command", required=True)
+    add = sources.add_parser("add", help="register a text: a file under CLHEAR_LOCAL_SOURCES_DIR, a URL, or a text file")
+    add.add_argument("key")
+    where = add.add_mutually_exclusive_group(required=True)
+    where.add_argument("--path", help="a text, HTML or PDF file, relative to CLHEAR_LOCAL_SOURCES_DIR")
+    where.add_argument("--url", help="a public https page or PDF")
+    where.add_argument("--text-file", help="a local text file whose contents are stored with the source")
+    add.add_argument("--kind", default="regulation",
+                     help="law, regulation, standard, guidance, form, agreement or enforcement (default regulation)")
+    add.add_argument("--jurisdiction", default="", help="the jurisdiction the text is law in, e.g. US or EU")
+    add.add_argument("--publisher", "--issuer", dest="issuer", default="", help="who publishes it, e.g. the regulator")
+    add.add_argument("--name", default="")
+    add.set_defaults(func=cmd_sources_add)
+    sources.add_parser("list", help="list registered sources").set_defaults(func=cmd_sources_list)
+    test = sources.add_parser("test", help="read a source and preview its clauses; stores nothing")
+    test.add_argument("key")
+    test.set_defaults(func=cmd_sources_test)
+    advise = sources.add_parser("advise", help="which official sources to add so every layer can produce records")
+    advise.add_argument("--scope", required=True)
+    advise.add_argument("--json", action="store_true")
+    advise.set_defaults(func=cmd_sources_advise)
+
+    scope = sub.add_parser("scope", help="name a set of sources that belong in one program").add_subparsers(
+        dest="scope_command", required=True)
+    create = scope.add_parser("create", help="create or replace a scope")
+    create.add_argument("name")
+    create.add_argument("sources", nargs="+")
+    create.set_defaults(func=cmd_scope_create)
+
+    profile = sub.add_parser("profile", help="describe an organisation by answering the texts' questions").add_subparsers(
+        dest="profile_command", required=True)
+    questions = profile.add_parser("questions", help="the questions a built scope's texts raise, and profiles to start from")
+    questions.add_argument("--scope", required=True)
+    questions.add_argument("--json", action="store_true")
+    questions.set_defaults(func=cmd_profile_questions)
+    pset = profile.add_parser("set", help="store a profile from a JSON file and/or flags")
+    pset.add_argument("profile_id")
+    pset.add_argument("--file", default="")
+    pset.add_argument("--name", default="")
+    pset.add_argument("--jurisdiction", action="append", default=[])
+    pset.add_argument("--role", action="append", default=[], help="a role you are (repeatable)")
+    pset.add_argument("--not-role", action="append", default=[], help="a role you are not (repeatable)")
+    pset.add_argument("--condition", action="append", default=[], help="'fact=true' or 'fact=false' (repeatable)")
+    pset.add_argument("--licence", action="append", default=[])
+    pset.set_defaults(func=cmd_profile_set)
+
+    blueprint = sub.add_parser("blueprint", help="read a blueprint").add_subparsers(dest="blueprint_command", required=True)
+    show = blueprint.add_parser("show", help="a blueprint as text: measures, duties, open questions, sources to add")
+    show.add_argument("--release", required=True)
+    show.add_argument("--profile", required=True)
+    show.set_defaults(func=cmd_blueprint_show)
 
     serve = sub.add_parser("serve", help="serve the HTTP API on this machine")
     serve.add_argument("--host", default=os.environ.get("CLHEAR_BIND_HOST", "127.0.0.1"))

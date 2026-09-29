@@ -193,28 +193,14 @@ def create_app() -> FastAPI:
 
     @application.post("/v1/sources/{key}/test-fetch")
     def test_fetch(key: str) -> dict:
-        from app.clhear import hoststore
-        from app.clhear.l1.fleet import adapter_for
+        from app.clhear.first_run import preview
 
-        from app.clhear.l1.models import CLAUSE_TYPES
-
-        entry = hoststore.registry_entries(_engine(), [key])
-        if not entry:
-            raise HTTPException(status_code=404, detail="source not found")
         try:
-            fetched = adapter_for(entry[0]).fetch()
+            return preview(_engine(), key)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="source not found") from exc
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"{type(exc).__name__}: {str(exc)[:480]}") from exc
-        if fetched is None:
-            return {"stored": False, "version": None, "nodes": 0, "clauses": 0, "bytes": 0, "preview": []}
-        tree = getattr(fetched, "tree", None) or []
-        walked = [node for root in tree for node in root.walk()]
-        clause_nodes = [node for node in walked if node.node_type in CLAUSE_TYPES and node.ref]
-        nbytes = sum(len(artifact.content or b"") for artifact in fetched.artifacts)
-        preview = [{"clause_ref": node.ref, "text": " ".join(node.subtree_text().split())[:200]}
-                   for node in clause_nodes[:8]]
-        return {"stored": False, "version": fetched.version_label, "nodes": len(walked),
-                "clauses": len(clause_nodes), "bytes": nbytes, "preview": preview}
 
     @application.get("/v1/scopes")
     def list_scopes() -> dict:
@@ -237,24 +223,26 @@ def create_app() -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @application.get("/v1/scopes/{name}/advice")
+    def scope_advice(name: str) -> dict:
+        from app.clhear.advisor import advise
+        from app.clhear.l1 import scopes
+
+        try:
+            keys = scopes.get(name)["sources"]
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        with _engine().connect() as conn:
+            return {"scope": name, "source_advice": advise(conn, name, keys)}
+
     @application.put("/v1/profiles/{profile_id}")
     def put_profile(profile_id: str, body: ProfileBody) -> dict:
-        from app.clhear import hoststore
-        from app.clhear.l4.validate import create_profile
+        from app.clhear.first_run import put_profile
 
         _check_attributes(body.attributes)
-        handle = _engine()
-        stored = create_profile(handle, body.attributes, name=body.name, source="api", allow_invalid=True)
-        row = hoststore.put_profile(
-            handle, profile_id, name=body.name or stored.get("name") or profile_id,
-            attributes=body.attributes, engine_id=stored.get("id"),
-        )
-        out = _profile_out(row)
-        out["status"] = stored.get("status")
-        out["engine_id"] = stored.get("id")
-        validity = stored.get("validity") if isinstance(stored.get("validity"), dict) else {}
-        out["validation"] = {"valid": stored.get("status") == "valid", "errors": validity.get("errors") or [],
-                             "warnings": validity.get("warnings") or []}
+        stored = put_profile(_engine(), profile_id, name=body.name, attributes=body.attributes)
+        out = _profile_out(stored["row"])
+        out.update(status=stored["status"], engine_id=stored["engine_id"], validation=stored["validation"])
         return out
 
     @application.get("/v1/profile-schema")
@@ -322,6 +310,7 @@ def create_app() -> FastAPI:
             "sources": body.get("sources") or {},
             "failed_sources": body.get("failed_sources") or [],
             "lineage": body.get("lineage") or {},
+            "source_advice": body.get("source_advice") or [],
             "profiles": sorted((body.get("profiles") or {}).keys()),
             "created_at": _iso(row["created_at"]),
         }
@@ -425,6 +414,7 @@ def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> di
         "undetermined": composition.get("undetermined") or [],
         "open_questions": composition.get("open_questions") or [],
         "evidence_gaps": composition.get("evidence_gaps") or [],
+        "source_advice": composition.get("source_advice") or [],
         "profile_warnings": composition.get("profile_warnings") or [],
         "scope": composition.get("scope"),
         **({"sample": True} if composition.get("sample") else {}),
