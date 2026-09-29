@@ -21,8 +21,7 @@ from collections import OrderedDict
 import sqlalchemy as sa
 from sqlalchemy.engine import Connection
 
-# Source kinds a user can register (see api._SOURCE_KINDS).
-SOURCE_KINDS = ("law", "regulation", "standard", "guidance", "form", "agreement", "enforcement")
+from app.clhear.l1.models import SOURCE_KINDS  # noqa: F401  (the kinds a user can register)
 
 
 def _add(source: str, register_as: str, why: str) -> dict:
@@ -94,13 +93,19 @@ ADVICE: dict[str, dict] = {
     },
     "no_licence_types": {
         "layer": "L4",
-        "missing": "No licensing, registration, certification or authorisation regime is in scope.",
-        "summary": "If your activity needs a licence, registration or certification, add the text that establishes it.",
+        "missing": "No licensing, registration, certification or authorisation regime, and no register of licensed "
+                   "entities, is in scope.",
+        "summary": "If your activity needs a licence, registration or certification, add the text that establishes it "
+                   "or the official register that lists it.",
         "add": [
             _add("The licensing, registration or certification rules for your activity", "regulation",
                  "Licence types are read from these clauses and become profile attribute values and candidate organisation profiles."),
             _add("The scope-of-practice or authorisation provisions of the act", "law",
                  "They say who may carry on an activity, which separates one organisation profile from another."),
+            _add("The official register of licensed or authorised entities, or its list of licence categories",
+                 "register",
+                 "Each licence type a register entry names is read with its quote and becomes a permitted value of "
+                 "the profile's licences and a candidate organisation profile."),
         ],
     },
     "role_undefined": {
@@ -202,7 +207,7 @@ def advice_for(kind: str, *, issuers: list[str] | None = None, **detail) -> dict
     if issuers:
         named = ", ".join(issuers)
         for item in out["add"]:
-            if item["register_as"] in ("guidance", "enforcement", "regulation"):
+            if item["register_as"] in ("law", "regulation", "guidance", "enforcement", "register"):
                 item["published_by"] = named
     return out
 

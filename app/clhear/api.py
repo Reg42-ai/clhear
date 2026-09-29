@@ -9,11 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.clhear.contribution import ContributionProposal, ProposalRejected, parse_proposal
 from app.clhear.l1.adapters import PUBLISHER_ADAPTER_CLASSES
+from app.clhear.l1.models import SOURCE_KINDS as _SOURCE_KINDS
 from app.clhear.l1.scopes import SCOPE_ENV
 from app.clhear.service_auth import require_token
 from app.clhear.settings import get_settings
-
-_SOURCE_KINDS = ("law", "regulation", "standard", "guidance", "form", "agreement", "enforcement")
 
 
 class SourceBody(BaseModel):

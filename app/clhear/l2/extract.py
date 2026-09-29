@@ -434,6 +434,30 @@ def why_id(conn, oid: str) -> str:
     return conn.execute(sa.select(obligations.c.why_trail_id).where(obligations.c.id == oid)).scalar_one()
 
 
+def _stale_not_binding(engine: Engine, source_key: str) -> int:
+    """A source that is not binding (an enforcement source or a register) states no
+    obligations: those derived from it before it was registered as such go stale."""
+    from app.clhear.l2 import registry
+
+    staled = 0
+    with engine.begin() as conn:
+        live = conn.execute(sa.select(obligations).where(obligations.c.source_key == source_key,
+                                                         obligations.c.status.in_(("derived", "validated")))).all()
+        for row in live:
+            trail = registry.why_for(row.id, clause_id=None, text_hash=row.text_hash, method=EXTRACTOR_VERSION,
+                                     confidence=None, summary="source is not binding (an enforcement source or a "
+                                     "register): obligation revoked (stale)").write(conn)
+            conn.execute(obligations.update().where(obligations.c.id == row.id)
+                         .values(status="stale", why_trail_id=trail, version=(row.version or 1) + 1))
+            record.invalidate(conn, asserts, sa.and_(asserts.c.obligation_id == row.id, asserts.c.valid_to.is_(None)),
+                              why=trail, reason="source is not binding")
+            registry.record_change(conn, obligation_id=row.id, kind="revoked", cause_clause_ids=[],
+                                   source_key=source_key, old_text_hash=row.text_hash, effective_date=None,
+                                   effective_date_basis="none", why=trail)
+            staled += 1
+    return staled
+
+
 def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
     """(Re-)derive the obligation registry. Idempotent: deterministic ids;
     unchanged basis hash + same extractor version = untouched row (validated
@@ -472,8 +496,10 @@ def run_extraction(engine: Engine, source_key: str | None = None) -> dict:
     if source_key and not scoped_keys:
         # A scoped run whose source is not binding / has no in-force version must
         # not fall through to the unscoped path and stale every other source (I2).
+        staled = _stale_not_binding(engine, source_key) if any(
+            s.key == source_key and s.id in versions and s.id not in binding for s in source_rows) else 0
         return {"extractor": EXTRACTOR_VERSION, "sources_scanned": 0, "candidates": 0, "inserted": 0,
-                "re_derived": 0, "unchanged": 0, "stale": 0, "skipped": source_key}
+                "re_derived": 0, "unchanged": 0, "stale": staled, "skipped": source_key}
 
     jurisdictions = {s.key: s.jurisdiction for s in source_rows}
     regulators = {s.key: s.issuer for s in source_rows}

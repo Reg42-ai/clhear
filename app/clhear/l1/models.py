@@ -19,6 +19,12 @@ Json = sa.JSON().with_variant(JSONB(), "postgresql")
 BigId = sa.BigInteger().with_variant(sa.Integer, "sqlite")
 
 
+# The kinds of official source a user registers. The kind decides which layers read it:
+# ``enforcement`` and ``register`` are informative (never read for obligations).
+SOURCE_KINDS = ("law", "regulation", "standard", "guidance", "form", "agreement", "enforcement", "register")
+INFORMATIVE_KINDS = ("enforcement", "register")
+
+
 def _uuid() -> str:
     return str(uuid.uuid4())
 
@@ -43,7 +49,7 @@ sources = sa.Table(
         "kind",
         sa.Text,
         sa.CheckConstraint(
-            "kind in ('law','regulation','standard','guidance','form','agreement','enforcement')",
+            "kind in (" + ",".join(f"'{k}'" for k in SOURCE_KINDS) + ")",
             name="sources_kind_check",
         ),
         nullable=False,

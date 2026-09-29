@@ -269,9 +269,19 @@ def _merge_license_types(conn: Connection, live_licences: dict, trail: str, toda
         lid = f"LIC:{row['jurisdiction']}:{slug(row['name'])}"
         if conn.execute(sa.select(licences.c.id).where(licences.c.id == lid)).first():
             continue
+        register = {"register": "", "register_url": "", "register_ref": ""}
+        anchors = [a for a in row["clause_anchors"] or [] if isinstance(a, dict)]
+        if row["generated_by"] == "l4.registers" and anchors:
+            # Read from an official register: record which one, and the entry.
+            from app.clhear.l1.models import sources
+
+            url = conn.execute(sa.select(sources.c.canonical_url).where(
+                sources.c.key == anchors[0].get("source_key"))).scalar()
+            register = {"register": anchors[0].get("source_key") or "", "register_url": url or "",
+                        "register_ref": anchors[0].get("ref") or ""}
         record.write(conn, licences, {
             "id": lid, "jurisdiction": row["jurisdiction"], "regulator": "", "name": row["name"],
-            "regime": row["issuing_regime"], "register": "", "register_url": "", "register_ref": "",
+            "regime": row["issuing_regime"], **register,
             "aliases": [], "clause_anchors": row["clause_anchors"] or [], "status": row["status"], "canonical_id": None,
         }, why=trail, valid_from=today)
         existing_names.add((row["jurisdiction"].upper(), _fold(row["name"])))
