@@ -64,7 +64,9 @@ LAYER_CATALOG: dict[str, dict] = {
             "method": "Deterministic fetch -> parse -> hash -> diff. Adapters retrieve the "
             "official artifact from the issuing authority (legislation.gov.uk, EUR-Lex, "
             "govinfo/eCFR, NIST); the pipeline stores originals in WORM S3, versions the "
-            "text, aligns clauses by ref and emits clause-level change events. Source "
+            "text, aligns clauses by ref and emits clause-level change events. Every mention of "
+            "another text or provision is recorded with its quote and offsets; a build resolves the "
+            "mentions against its scope and names each cited text it does not hold. Source "
             "text is NEVER generated, cleaned up, or summarized into the record.",
             "generation": {
                 "nature": "reproduction, zero generation",

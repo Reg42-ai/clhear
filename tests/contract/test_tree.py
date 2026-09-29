@@ -20,3 +20,11 @@ def test_no_regulatory_scope_is_shipped():
     assert "S: list[dict] = []" in registry
     shipped = list(Path("scopes").glob("*")) if Path("scopes").is_dir() else []
     assert shipped == []
+
+
+def test_the_schema_revision_is_the_latest_migration():
+    """The release manifest reads ``schema_revision_to`` from the settings: it must name the newest migration."""
+    from app.clhear.settings import get_settings
+
+    latest = max(int(p.name[1:5]) for p in Path("migrations").glob("m[0-9][0-9][0-9][0-9]_*.py"))
+    assert get_settings().clhear_schema_revision == f"{latest:04d}"

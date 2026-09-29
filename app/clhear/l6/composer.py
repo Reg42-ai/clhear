@@ -493,9 +493,10 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                 slot["duties"].append(ob.get("stable_id") or oid)
     open_questions = sorted(questions.values(), key=lambda q: (q["key"], -len(q["duties"]), str(q["value"])))
     gaps = _evidence_gaps(conn, scope_name, coverage, items, verdicts) if verdicts is not None else []
-    from app.clhear.advisor import for_blueprint
+    from app.clhear.advisor import for_blueprint, source_inventory
 
     source_advice = for_blueprint(conn, scope_name, gaps, bool(undetermined), scope_keys) if verdicts is not None else []
+    inventory = source_inventory(conn, scope_name, scope_keys) if verdicts is not None else []
     states = [c["state"] for c in coverage]
     program = {}
     for it in items:
@@ -530,6 +531,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
         "open_questions": open_questions,
         "evidence_gaps": gaps,
         "source_advice": source_advice,
+        "source_inventory": inventory,
         "unresolved_anchors": unresolved_anchors,
         "unmapped_obligations": {"count": unmapped_count, "sample": unmapped_sample,
                                  "note": "derived obligations in your jurisdictions not yet mapped to any activity — visible by design"},

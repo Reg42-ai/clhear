@@ -40,6 +40,7 @@ from app.clhear.l1.models import (
     change_events,
     citations,
     clause_annotations,
+    clause_references,
     clauses,
     doc_nodes,
     family_members,
@@ -1068,6 +1069,10 @@ def _persist(
 
         citation_counts = (l1_families.mine_citations(conn, source_id, version_id) if derivation_allowed
                            else {"status": "skipped", "reason": "derive permission not granted"})
+        from app.clhear.l1 import references as l1_references
+
+        reference_counts = (l1_references.record_version(conn, version_id) if derivation_allowed
+                            else {"status": "skipped", "reason": "derive permission not granted"})
 
         new_map = {row["ref"]: row["text_hash"] for row in clause_rows}
         old_map = _clause_map(conn, previous.id) if previous is not None else {}
@@ -1205,6 +1210,7 @@ def _persist(
     recorder.stage("annotate", annotations=annotation_count)
     recorder.stage("index", search_units=unit_count)
     recorder.stage("citations", **citation_counts)
+    recorder.stage("references", **reference_counts)
     recorder.stage(
         "diff",
         old_version=previous.version_label if previous else None,
@@ -1378,6 +1384,7 @@ def _clear_version_tree(conn: Connection, version_id: int) -> None:
     ]
     if clause_ids:
         record.rebuild_projection(conn, citations, citations.c.from_clause_id.in_(clause_ids))
+        record.rebuild_projection(conn, clause_references, clause_references.c.from_clause_id.in_(clause_ids))
         record.rebuild_projection(conn, clause_annotations, clause_annotations.c.clause_id.in_(clause_ids))
         record.rebuild_projection(conn, clauses, clauses.c.id.in_(clause_ids))
     conn.execute(

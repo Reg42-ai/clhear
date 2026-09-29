@@ -156,6 +156,8 @@ def seed(engine: Engine) -> dict:
                     canonical_url=s.get("canonical_url") or "",
                     issuer=s.get("issuer") or "", publisher=s.get("publisher") or "",
                     license=s.get("license") or "open", adapter=s["adapter"],
+                    # A source registered again with another kind or reference takes it at once.
+                    kind=s.get("kind") or "guidance", instrument=s.get("instrument") or "",
                 ))
                 skipped += 1
                 continue

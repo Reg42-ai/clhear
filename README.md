@@ -178,7 +178,7 @@ The same run from the command line, once source, scope and profile exist: `clhea
 
 ### 6. Add the sources the layers ask for
 
-A layer with nothing in scope to derive its records from says so. Each blueprint and release carries `source_advice`: for every such layer, what is missing, which kinds of official source would supply it (for example enforcement actions and penalty notices for L7 risk scoring, or the regulator's FAQs, guidance and court decisions for L8 practices), and the source `kind` to register each as. `GET /v1/scopes/{name}/advice` and `clhear sources advise --scope <name>` return the same. `GET /v1/profile-schema?scope=<name>` also lists `candidates`: candidate organisation profiles built from the roles and licence types quoted from your texts, to start a profile from.
+A layer with nothing in scope to derive its records from says so. Each blueprint and release carries `source_advice`: for every such layer, what is missing, which kinds of official source would supply it (for example enforcement actions and penalty notices for L7 risk scoring, or the regulator's FAQs, guidance and court decisions for L8 practices), and the source `kind` to register each as. When a clause cites a text the scope does not hold ("section 2 of the Harbour Lighting Act 2019", "under Part 7"), the advice names that text as the clause words it, with the clauses that cite it. Each blueprint also carries a `source_inventory`: every source in scope and every text their clauses cite, each `derived`, `pending` or `unresolved`. `GET /v1/scopes/{name}/advice` and `clhear sources advise --scope <name>` return the same. `GET /v1/profile-schema?scope=<name>` also lists `candidates`: candidate organisation profiles built from the roles and licence types quoted from your texts, to start a profile from.
 
 [examples/security-baseline/run.sh](examples/security-baseline/run.sh) does all of this for one text and two organisations, and prints both blueprints.
 
@@ -222,7 +222,8 @@ A layer with nothing in scope to derive its records from says so. Each blueprint
 - **`coverage`**: every obligation that applies, with its quote (`evidence`: clause, offsets, exact words) and its `state`: `covered`, or `gap` when the text names no component for it. `triggers` lists conditions that time the obligation ("when an incident occurs") rather than decide whether it applies.
 - **`not_applicable`**: obligations ruled out by an answer, with the failed condition and its quote.
 - **`undetermined`** and **`open_questions`**: obligations that depend on a question the profile did not answer, and those questions, each with its quote. Answer them and run again.
-- **`evidence_gaps`**: what the texts in scope could not support, and which kind of source to add. Kinds: `no_measure`, `measure_name_rejected`, `characteristic_unspecified`, `role_undefined`, `no_licence_types`, `operator_not_stated`, `no_enforcement_sources`, `no_reference_sources`.
+- **`evidence_gaps`**: what the texts in scope could not support, and which kind of source to add. Kinds: `unresolved_reference`, `no_measure`, `measure_name_rejected`, `characteristic_unspecified`, `role_undefined`, `no_licence_types`, `operator_not_stated`, `no_enforcement_sources`, `no_reference_sources`.
+- **`source_inventory`**: every source in scope and every text their clauses cite, each `derived` (read and built), `pending` (registered, not built) or `unresolved` (cited, not registered).
 - **`minimality`**: `minimal: true` means no component can be removed without opening a gap. The full proof is in `proof`.
 
 Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote"}`, and `quote` is exactly the clause text between `start` and `end`. The release (`GET /v1/releases/{id}`) carries `lineage`: how many derived records were checked against the clause text, how many held, and any that did not (those are withheld from the blueprint). Obligation ids (`OBL:<source>#<clause_ref>`) and component ids (`BLK-…`) are stable.
@@ -261,7 +262,7 @@ Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote
 | `clhear export --release R --profile P [--out FILE]` | Write one blueprint as JSON |
 | `clhear release --release R [--out DIR]` | Write a whole stored release to a directory |
 | `clhear validate FILE [--contribution]` | Check a profile or a contribution proposal |
-| `clhear sources add KEY (--url U \| --path F \| --text-file F) [--kind K --jurisdiction J --publisher P --name N]` | Register a source |
+| `clhear sources add KEY (--url U \| --path F \| --text-file F) [--kind K --jurisdiction J --publisher P --name N --reference R]` | Register a source (`--reference`: the publisher's own reference for it, so texts that cite it resolve) |
 | `clhear sources list` / `clhear sources test KEY` | List sources; preview what a source's adapter reads, storing nothing |
 | `clhear sources advise --scope S [--json]` | Which official sources to add, per layer |
 | `clhear scope create NAME SOURCE...` | Name a scope |
