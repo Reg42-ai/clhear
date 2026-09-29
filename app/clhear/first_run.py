@@ -75,7 +75,7 @@ def questions_text(schema: dict) -> str:
         lines.append("- none in scope")
     candidates = schema.get("candidates") or []
     if candidates:
-        lines.append("\nCandidate organization profiles to start from:")
+        lines.append("\nCandidate organisation profiles to start from:")
         for c in candidates:
             lines.append(f"- {c['name']}: {c['attributes']}")
             for q in c.get("to_answer") or []:
@@ -118,7 +118,7 @@ def blueprint_text(bp: dict) -> str:
         for n in bp["not_applicable"]:
             lines.append(f"- {n['source_key']} {n['clause_ref']}: {n['because'][0]['rationale'] if n['because'] else ''}")
     if bp.get("open_questions"):
-        lines.append("\nOpen questions (answer them in the organization profile, then run again):")
+        lines.append("\nOpen questions (answer them in the organisation profile, then run again):")
         for q in bp["open_questions"]:
             lines.append(f"- {q['ask']}  ({len(q['duties'])} obligations)")
     if bp.get("source_advice"):

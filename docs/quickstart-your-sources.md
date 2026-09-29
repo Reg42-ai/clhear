@@ -62,14 +62,14 @@ clhear scope create my-rules rule rule-guidance actions
 
 ## 4. Run once with an empty profile
 
-The questions an organization profile answers come from the texts, so the first run is the way to find them.
+The questions an organisation profile answers come from the texts, so the first run is the way to find them.
 
 ```bash
 clhear profile set first
 clhear run --scope my-rules --profile-id first      # prints the release id and the lineage check
 ```
 
-## 5. Read the questions and the candidate organization profiles (L4)
+## 5. Read the questions and the candidate organisation profiles (L4)
 
 ```bash
 clhear profile questions --scope my-rules
@@ -81,7 +81,7 @@ This lists, each with the words it was read from:
 - the **roles**: the addressees the obligations name ("covered person", "operator");
 - the **conditions**: the obligations' own "where / if / unless" clauses about the addressee;
 - the **licence types** the texts establish;
-- the **candidate organization profiles**: one per role and one per licence type, with the conditions still to answer. A candidate is only ever built from roles and licences quoted from your texts.
+- the **candidate organisation profiles**: one per role and one per licence type, with the conditions still to answer. A candidate is only ever built from roles and licences quoted from your texts.
 
 Add `--json` for the same as data, including each question's quotes.
 
@@ -124,7 +124,7 @@ Add what the advice suggests with `clhear sources add`. Then put it in the scope
 
 ## Two organisations, two sets of texts
 
-Nothing in CLHEAR is specific to a sector. Two users with different texts get different questions, candidate organization profiles, components and advice, because each comes only from the texts in their own scope:
+Nothing in CLHEAR is specific to a sector. Two users with different texts get different questions, candidate organisation profiles, components and advice, because each comes only from the texts in their own scope:
 
 ```bash
 DATABASE_URL=sqlite:///health.db  CLHEAR_SCOPES_DIR=health-scopes  clhear sources add ...   # health privacy rules, their guidance, enforcement

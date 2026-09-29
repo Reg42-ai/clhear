@@ -86,9 +86,9 @@ ADVICE: dict[str, dict] = {
         "summary": "If your activity needs a licence, registration or certification, add the text that establishes it.",
         "add": [
             _add("The licensing, registration or certification rules for your activity", "regulation",
-                 "Licence types are read from these clauses and become profile attribute values and candidate organization profiles."),
+                 "Licence types are read from these clauses and become profile attribute values and candidate organisation profiles."),
             _add("The scope-of-practice or authorisation provisions of the act", "law",
-                 "They say who may carry on an activity, which separates one organization profile from another."),
+                 "They say who may carry on an activity, which separates one organisation profile from another."),
         ],
     },
     "role_undefined": {
@@ -147,7 +147,7 @@ ADVICE: dict[str, dict] = {
     },
     "undetermined": {
         "layer": "L4",
-        "missing": "Some obligations depend on questions the organization profile has not answered.",
+        "missing": "Some obligations depend on questions the organisation profile has not answered.",
         "summary": "Not a missing source: answer the open questions in the profile and run again.",
         "add": [],
     },

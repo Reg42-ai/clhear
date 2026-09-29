@@ -1,14 +1,14 @@
 # CLHEAR
 
-**CLHEAR turns the regulatory texts you choose, plus a short description of an organisation, into a compliance blueprint.** The blueprint is the set of measures that covers every duty in those texts that applies to that organisation. Every duty, measure, role, condition and activity in it is quoted from those texts, and whatever the texts do not support is reported, with the kind of source that would.
+**CLHEAR turns the regulatory texts you choose, plus a short description of an organisation, into a reference blueprint for compliance.** The blueprint is the set of components that covers every obligation in those texts that applies to that organisation. Every obligation, component, role, condition and compliance activity in it is quoted from those texts, and whatever the texts do not support is reported, with the kind of source that would.
 
 A statute is long. A compliance program has to answer a shorter question: *for an organisation of this shape, what must be in place, and which clause says so?* CLHEAR is an open, self-hosted engine for that question. You bring the texts: a law, a regulation, a standard, an internal policy.
 
-- **Grounded in the texts, and only the texts.** Every record carries quotes of the clause it came from, with offsets, and each run checks them all again (`lineage`). No sector vocabulary is built in, so a hospital's, a bank's and a factory's texts each raise their own questions.
-- **Honest about what is missing.** When the texts cannot support a record (a measure the duty does not name, a role no text defines, a licensing regime that is not in scope), the blueprint says so in `evidence_gaps` and recommends which source to add. It never guesses.
-- **Accounted for.** Every duty in scope ends up in one of four states: covered by a measure, a gap, not applicable (with the answer that ruled it out), or undetermined (with the question you have not answered yet).
-- **Irredundant.** No measure can be removed without leaving a duty uncovered, and the blueprint carries that proof.
-- **Diffable.** When a text or the organisation changes, you can see which measures appeared, which dropped, and which duties changed state.
+- **Grounded in the texts, and only the texts.** Every record carries an evidence chain: quotes of the clause it came from, with offsets. Each run checks them all again (`lineage`). No sector vocabulary is built in, so a hospital's, a bank's and a factory's texts each raise their own questions.
+- **Honest about what is missing.** When the texts cannot support a record (a component the obligation does not name, a role no text defines, a licensing regime that is not in scope), the blueprint says so in `evidence_gaps` and recommends which source to add. It never guesses.
+- **Accounted for.** Every obligation in scope ends up in one of four states: covered by a component, a gap, not applicable (with the answer that ruled it out), or undetermined (with the question you have not answered yet).
+- **Irredundant.** No component can be removed without leaving an obligation uncovered, and the blueprint carries that proof.
+- **Diffable.** When a text or the organisation changes, you can see which components appeared, which dropped, and which obligations changed state.
 - **Yours.** CLHEAR ships with **no texts loaded**, runs on a laptop or in a private network, and keeps its data in one database.
 
 ---
@@ -37,48 +37,48 @@ More detail: [docs/how-it-works.md](docs/how-it-works.md) (each layer, and the r
 ```mermaid
 flowchart LR
     S["Sources<br/>(texts you choose)"] --> L1
-    P["Profile<br/>(facts about the organisation)"] --> L4
+    P["Organisation profile<br/>(facts about the organisation)"] --> L4
     subgraph run["One run over one scope"]
-        L1["L1 · Read<br/>keep the text,<br/>split into clauses"] --> L2["L2 · Duties<br/>one per duty-bearing<br/>clause"]
-        L2 --> L3["L3 · Measures<br/>what satisfies<br/>each duty"]
-        L2 --> L4["L4 · Applicability<br/>which duties apply<br/>to this organisation"]
-        L3 --> L5["L5 · Activities<br/>who operates<br/>each measure"]
+        L1["L1 · Sources<br/>keep the text,<br/>split into clauses"] --> L2["L2 · Obligations<br/>one per obligation-bearing<br/>clause"]
+        L2 --> L3["L3 · Components<br/>what satisfies<br/>each obligation"]
+        L2 --> L4["L4 · Profile attributes<br/>and applicability<br/>which obligations apply<br/>to this organisation"]
+        L3 --> L5["L5 · Compliance activities<br/>who operates<br/>each component"]
         L4 --> L5
-        L5 --> L6["L6 · Compose<br/>covering set,<br/>proof, explanations"]
+        L5 --> L6["L6 · Composition<br/>covering set,<br/>proof, explanations"]
     end
-    L6 --> B["Blueprint (JSON)<br/>stored in a release"]
+    L6 --> B["Reference blueprint (JSON)<br/>stored in a release"]
 ```
 
 In plain words, a run:
 
 1. **Reads** each text in the scope, keeps it verbatim, and splits it into clauses along the text's own structure: parts, articles, sections, numbered paragraphs, list items.
-2. **Finds the duties.** A clause is a duty when it says someone *must*, *shall*, *is required to* or *is prohibited from* doing something. Duties of public bodies (an authority, a department, a court), definitions and procedure are left out. Weaker wording ("should") goes to the model, which must quote the words it relied on. Each duty's subject, action and condition are stored as quotes of the clause.
-3. **Names measures in the text's words.** A measure is what the duty tells the addressee to do or to have ("keep a log of security incidents"). The model may group duties under one measure, but a name is kept only if every word of it is in the cited clauses. A duty that names nothing concrete gets no invented measure: it becomes a gap with a recommendation.
-4. **Asks the questions the texts raise.** A duty's conditions become questions for the organisation: the jurisdiction its source declares, the role it is addressed to ("the controller", "a covered entity", "every employer"), and its own "where / if / unless" clause when that clause is about the addressee ("where an organisation processes personal data"). A duty applies when every question is answered and matches; a question with no answer leaves the duty undetermined.
-5. **Composes the blueprint.** CLHEAR takes every measure a duty requires, then picks the fewest extra measures that cover the rest, removes anything redundant, proves it, and explains each measure with the duties it cites and their quotes. Before composing, every derived record is checked against the clause text again; anything that fails is withheld and listed.
+2. **Finds the obligations.** A clause states an obligation when it says someone *must*, *shall*, *is required to* or *is prohibited from* doing something. Obligations of public bodies (an authority, a department, a court), definitions and procedure are left out. Weaker wording ("should") goes to the model, which must quote the words it relied on. Each obligation's subject, action and condition are stored as quotes of the clause.
+3. **Names components in the text's words.** A component is what the obligation tells the addressee to do or to have ("keep a log of security incidents"). The model may group obligations under one component, but a name is kept only if every word of it is in the cited clauses. An obligation that names nothing concrete gets no invented component: it becomes a gap with a recommendation.
+4. **Asks the questions the texts raise.** An obligation's applicability conditions become questions for the organisation: the jurisdiction its source declares, the role it is addressed to ("the controller", "a covered entity", "every employer"), and its own "where / if / unless" clause when that clause is about the addressee ("where an organisation processes personal data"). An obligation applies when every question is answered and matches; a question with no answer leaves the obligation undetermined.
+5. **Composes the reference blueprint.** CLHEAR takes every component an obligation requires, then picks the fewest extra components that cover the rest, removes anything redundant, proves it, and explains each element with the obligations it cites and their quotes. Before composing, every derived record is checked against the clause text again (the anchoring check); anything that fails is withheld and listed.
 
-Where the model fits: clause text is stored exactly as read and the model never rewrites it. Duty detection, applicability and composition are deterministic rules; the same inputs give the same blueprint. The model triages weak duties, splits hard sentences, groups duties under measures, reads licence types and fills characteristics, and each answer is kept only when it is the text's own words. Every step that uses it records which model answered.
+Where the model fits: clause text is stored exactly as read and the model never rewrites it. Obligation detection, applicability and composition are deterministic rules; the same inputs give the same blueprint. The model triages weak obligations, splits hard sentences, groups obligations under components, reads licence types and fills characteristics, and each answer is kept only when it is the text's own words. Every step that uses it records which model answered.
 
 ## The five things you work with
 
 | Object | What it is | Example |
 | --- | --- | --- |
-| **Source** | One text: pasted, a file, or a URL. Give it a short `key`, and a `jurisdiction` if the text is law somewhere specific. | `gdpr` (EU), `iso-controls` (no jurisdiction) |
+| **Source** | One text: pasted, a file, or a URL. Give it a short `key`, a `jurisdiction` if the text is law somewhere specific, and its publisher (`issuer`) if you know it. | `gdpr` (EU), `iso-controls` (no jurisdiction) |
 | **Scope** | A named list of sources that belong in one program. | `privacy-program` → `[gdpr, dpa-guidance]` |
-| **Profile** | The organisation's answers to the questions the texts raise. | `acme` → `{"jurisdictions": ["EU"], "roles": ["controller"], "conditions": {"processes personal data": true}}` |
+| **Organisation profile** | The organisation's answers to the questions the texts raise: its profile attribute values. | `acme` → `{"jurisdictions": ["EU"], "roles": ["controller"], "conditions": {"processes personal data": true}}` |
 | **Run** | One execution over a scope for one or more profiles. Queued, then run by a worker. | `run_…` |
-| **Release** | The stored result of a finished run: one **blueprint** per profile. | `rel_…` |
+| **Release** | The stored result of a finished run: one **reference blueprint** per profile. | `rel_…` |
 
-**Profiles answer the texts' questions.** There is no fixed list of organisation types. After a scope has been built once, `GET /v1/profile-schema?scope=<name>` lists the questions its texts raise, each with the quotes it came from:
+**Profiles answer the texts' questions.** There is no fixed list of organisation types. After a scope has been built once, `GET /v1/profile-schema?scope=<name>` lists the questions its applicability conditions raise, each with the quotes it came from:
 
 | Field | What it answers | Effect |
 | --- | --- | --- |
-| `jurisdictions` | Where the organisation operates (a list) | Duties from a source with a declared jurisdiction apply only if it is listed. Sources with no jurisdiction apply everywhere. |
-| `roles` | Which addressees the texts name it is, e.g. `["controller"]`, or `{"processor": false}` to say no | A duty addressed to "the controller" applies when you are one. "Every organisation" or "any person" raises no question. |
-| `conditions` | Facts the duties depend on, by their words or their `COND-` id, e.g. `{"processes personal data": true}` | A duty with "where an organisation processes personal data" applies when that is true ("unless …" when it is false). |
-| `licences` | Licence types you hold, from those the texts in scope establish | Recorded; a duty addressed to a licence holder is asked as a role. |
+| `jurisdictions` | Where the organisation operates (a list) | Obligations from a source with a declared jurisdiction apply only if it is listed. Sources with no jurisdiction apply everywhere. |
+| `roles` | Which addressees the texts name it is, e.g. `["controller"]`, or `{"processor": false}` to say no | An obligation addressed to "the controller" applies when you are one. "Every organisation" or "any person" raises no question. |
+| `conditions` | Facts the obligations depend on, by their words or their `COND-` id, e.g. `{"processes personal data": true}` | An obligation with "where an organisation processes personal data" applies when that is true ("unless …" when it is false). |
+| `licences` | Licence types you hold, from those the texts in scope establish | Recorded; an obligation addressed to a licence holder is asked as a role. |
 
-An unanswered question never silently includes or excludes a duty: the duty is **undetermined** and the blueprint lists the question under `open_questions`. `PUT /v1/profiles/{id}` checks the shape; a run warns about answers no text in scope asks for (`profile_warnings`).
+An unanswered question never silently includes or excludes an obligation: the obligation is **undetermined** and the blueprint lists the question under `open_questions`. `PUT /v1/profiles/{id}` checks the shape; a run warns about answers no text in scope asks for (`profile_warnings`).
 
 Profiles describe the *kind* of organisation, never its people, controls or evidence.
 
@@ -100,7 +100,7 @@ clhear export --release <release_id from quickstart> --profile example-profile
 
 ## Run it on your own texts
 
-[docs/quickstart-your-sources.md](docs/quickstart-your-sources.md) walks the whole path with the `clhear` command alone: register your texts, read the questions they raise and the candidate profiles, answer them, read the blueprint, and add the sources each layer asks for. The steps below do the same over the HTTP API.
+[docs/quickstart-your-sources.md](docs/quickstart-your-sources.md) walks the whole path with the `clhear` command alone: register your texts, read the questions they raise and the candidate organisation profiles, answer them, read the blueprint, and add the sources each layer asks for. The steps below do the same over the HTTP API.
 
 ### 1. Connect a model
 
@@ -178,7 +178,7 @@ The same run from the command line, once source, scope and profile exist: `clhea
 
 ### 6. Add the sources the layers ask for
 
-A layer with nothing in scope to derive its records from says so. Each blueprint and release carries `source_advice`: for every such layer, what is missing, which kinds of official source would supply it (for example enforcement actions and penalty notices for L7 risk, or the regulator's FAQs, guidance and court decisions for L8), and the source `kind` to register each as. `GET /v1/scopes/{name}/advice` and `clhear sources advise --scope <name>` return the same. `GET /v1/profile-schema?scope=<name>` also lists `candidates`: business profiles built from the roles and licence types quoted from your texts, to start a profile from.
+A layer with nothing in scope to derive its records from says so. Each blueprint and release carries `source_advice`: for every such layer, what is missing, which kinds of official source would supply it (for example enforcement actions and penalty notices for L7 risk scoring, or the regulator's FAQs, guidance and court decisions for L8 practices), and the source `kind` to register each as. `GET /v1/scopes/{name}/advice` and `clhear sources advise --scope <name>` return the same. `GET /v1/profile-schema?scope=<name>` also lists `candidates`: candidate organisation profiles built from the roles and licence types quoted from your texts, to start a profile from.
 
 [examples/security-baseline/run.sh](examples/security-baseline/run.sh) does all of this for one text and two organisations, and prints both blueprints.
 
@@ -218,29 +218,29 @@ A layer with nothing in scope to derive its records from says so. Each blueprint
 }
 ```
 
-- **`items`**: the measures, each named in the text's words (`evidence.name` quotes them). `basis` is `required` when a duty calls for that measure, and `selected` when the composer chose it to cover remaining duties. `characteristics` (cadence, owner, retention …) appear only when a clause states them, with the quote.
-- **`coverage`**: every duty that applies, with its quote (`evidence`: clause, offsets, exact words) and its `state`: `covered`, or `gap` when the text names no measure for it. `triggers` lists conditions that time the duty ("when an incident occurs") rather than decide whether it applies.
-- **`not_applicable`**: duties ruled out by an answer, with the failed condition and its quote.
-- **`undetermined`** and **`open_questions`**: duties that depend on a question the profile did not answer, and those questions, each with its quote. Answer them and run again.
+- **`items`**: the elements of the blueprint, one component each, named in the text's words (`evidence.name` quotes them). `basis` is `required` when an obligation calls for that component, and `selected` when the composer chose it to cover remaining obligations. `characteristics` (cadence, owner, retention …) appear only when a clause states them, with the quote.
+- **`coverage`**: every obligation that applies, with its quote (`evidence`: clause, offsets, exact words) and its `state`: `covered`, or `gap` when the text names no component for it. `triggers` lists conditions that time the obligation ("when an incident occurs") rather than decide whether it applies.
+- **`not_applicable`**: obligations ruled out by an answer, with the failed condition and its quote.
+- **`undetermined`** and **`open_questions`**: obligations that depend on a question the profile did not answer, and those questions, each with its quote. Answer them and run again.
 - **`evidence_gaps`**: what the texts in scope could not support, and which kind of source to add. Kinds: `no_measure`, `measure_name_rejected`, `characteristic_unspecified`, `role_undefined`, `no_licence_types`, `operator_not_stated`, `no_enforcement_sources`, `no_reference_sources`.
-- **`minimality`**: `minimal: true` means no measure can be removed without opening a gap. The full proof is in `proof`.
+- **`minimality`**: `minimal: true` means no component can be removed without opening a gap. The full proof is in `proof`.
 
-Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote"}`, and `quote` is exactly the clause text between `start` and `end`. The release (`GET /v1/releases/{id}`) carries `lineage`: how many derived records were checked against the clause text, how many held, and any that did not (those are withheld from the blueprint). Duty ids (`OBL:<source>#<clause_ref>`) and measure ids (`BLK-…`) are stable.
+Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote"}`, and `quote` is exactly the clause text between `start` and `end`. The release (`GET /v1/releases/{id}`) carries `lineage`: how many derived records were checked against the clause text, how many held, and any that did not (those are withheld from the blueprint). Obligation ids (`OBL:<source>#<clause_ref>`) and component ids (`BLK-…`) are stable.
 
 ## Is this blueprint credible? A checklist
 
 1. **The text was read as you expect.** `test-fetch` shows clause refs that match the document's own numbering.
 2. **Nothing failed silently.** The release lists `failed_sources` (should be empty). Each layer reports `model_calls` with `ok` and `failed`, and a layer where every model call failed fails the run.
 3. **Every record is anchored.** In the release, `lineage.unanchored` is empty and `lineage.rows` equals `lineage.anchored`.
-4. **Every duty has a state.** `coverage_summary.total + not_applicable + undetermined` equals the duties found in the scope. Gaps are shown, not hidden.
+4. **Every obligation has a state.** `coverage_summary.total + not_applicable + undetermined` equals the obligations found in the scope. Gaps are shown, not hidden.
 5. **No open questions remain** you meant to answer, and each not-applicable reason matches the organisation.
 6. **Read the evidence gaps.** Each one names a source to add. Adding it and running again is how a blueprint gets more complete.
 7. **Spot-check a few quotes** against the source document. They are the clause text itself, not generated.
-8. **Treat groupings as proposals.** Which duties share a measure comes from the model (in the text's words); the duties they cite and the proof that they cover them are mechanical. A person should review the program before it is adopted.
+8. **Treat groupings as proposals.** Which obligations share a component comes from the model (in the text's words); the obligations they cite and the proof that they cover them are mechanical. A person should review the program before it is adopted.
 
 ## Comparing blueprints and getting notified
 
-**Diff:** `GET /v1/blueprints/{blueprint_id}/diff?against={other_id}` shows measures added or dropped and duties that changed state.
+**Diff:** `GET /v1/blueprints/{blueprint_id}/diff?against={other_id}` shows components added or dropped and obligations that changed state.
 
 **Webhooks:** register a URL and secret with `POST /v1/webhooks`. Deliveries carry `X-CLHEAR-Event` and `X-CLHEAR-Signature: sha256=<HMAC-SHA256 of the body>`. Events: `run.started`, `run.finished`, `run.failed`, `source.failed`, `release.published`, `blueprint.changed`. A failed delivery never fails the run.
 
@@ -261,11 +261,11 @@ Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote
 | `clhear export --release R --profile P [--out FILE]` | Write one blueprint as JSON |
 | `clhear release --release R [--out DIR]` | Write a whole stored release to a directory |
 | `clhear validate FILE [--contribution]` | Check a profile or a contribution proposal |
-| `clhear sources add KEY (--url U \| --path F \| --text-file F) [--kind K --jurisdiction J --issuer I --name N]` | Register a source |
+| `clhear sources add KEY (--url U \| --path F \| --text-file F) [--kind K --jurisdiction J --publisher P --name N]` | Register a source |
 | `clhear sources list` / `clhear sources test KEY` | List sources; preview what a source's adapter reads, storing nothing |
 | `clhear sources advise --scope S [--json]` | Which official sources to add, per layer |
 | `clhear scope create NAME SOURCE...` | Name a scope |
-| `clhear profile questions --scope S [--json]` | The questions a built scope raises, and candidate profiles |
+| `clhear profile questions --scope S [--json]` | The questions a built scope raises, and candidate organisation profiles |
 | `clhear profile set ID [--file F \| --jurisdiction --role --not-role --condition fact=true --licence]` | Store a profile |
 | `clhear blueprint show --release R --profile P` | A blueprint as readable text |
 
@@ -307,11 +307,11 @@ The full contract is [openapi/clhear-v1.yaml](openapi/clhear-v1.yaml).
 | `CLHEAR_BIND_HOST`, `CLHEAR_PORT` | `127.0.0.1`, `8000` | Where `serve` listens |
 | `CLHEAR_SERVICE_TOKENS`, `CLHEAR_SERVICE_TOKEN_FILE` | unset | Bearer tokens, required off loopback |
 
-**Model spend is capped** at $20 per layer per day (`CLHEAR_GATEWAY_FLEET_DAILY_CAP_USD`) and $100 per day overall (`CLHEAR_GATEWAY_GLOBAL_DAILY_CAP_USD`). A short standard costs cents to a few dollars; a long regulation with hundreds of duties can reach the per-layer cap. Raise the caps before such a run, or use a lower `CLHEAR_LLM_EFFORT`. A capped call counts as a failed model call in the layer report, and a layer where every call failed fails the run, so a cap never produces a silently thin blueprint.
+**Model spend is capped** at $20 per layer per day (`CLHEAR_GATEWAY_FLEET_DAILY_CAP_USD`) and $100 per day overall (`CLHEAR_GATEWAY_GLOBAL_DAILY_CAP_USD`). A short standard costs cents to a few dollars; a long regulation with hundreds of obligations can reach the per-layer cap. Raise the caps before such a run, or use a lower `CLHEAR_LLM_EFFORT`. A capped call counts as a failed model call in the layer report, and a layer where every call failed fails the run, so a cap never produces a silently thin blueprint.
 
 ## What CLHEAR stores, and what it does not
 
-The database holds the texts you supplied (as read), the duties, measures, questions and activities derived from them with their quotes, the evidence gaps, the profiles you submitted, and the releases. Nothing else is loaded: no sector catalogue, register or sample organisation. Firm identity, the controls you already run, owners and evidence stay in your own systems.
+The database holds the texts you supplied (as read), the obligations, components, applicability conditions and compliance activities derived from them with their quotes, the evidence gaps, the profiles you submitted, and the releases. Nothing else is loaded: no sector catalogue, register or sample organisation. Firm identity, the controls you already run, owners and evidence stay in your own systems.
 
 ## Deploy, pin a version, contribute
 
