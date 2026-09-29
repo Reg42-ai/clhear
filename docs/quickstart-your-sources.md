@@ -39,6 +39,7 @@ The kind decides which layer reads the text:
 | `form` | Official forms and templates | L3 components (documents to keep) |
 | `agreement` | Model contracts and agreements the texts require | L3 components |
 | `enforcement` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements | L7 enforcement records and risk |
+| `register` | Official registers of licensed or authorised entities, lists of licence categories | L4 licence types (never read for obligations) |
 
 `--reference` is the publisher's own reference for the text, such as its number or citation ("Act No. 4 of 2019", "Regulation (AB) 2030/17"). When another text in scope cites it by that reference or by its name, the reference resolves to it.
 
@@ -82,7 +83,7 @@ This lists, each with the words it was read from:
 - the **jurisdictions** your sources declare;
 - the **roles**: the addressees the obligations name ("covered person", "operator");
 - the **conditions**: the obligations' own "where / if / unless" clauses about the addressee;
-- the **licence types** the texts establish;
+- the **licence types** the texts and registers establish: the permitted values of your profile's `licences`;
 - the **candidate organisation profiles**: one per role and one per licence type, with the conditions still to answer. A candidate is only ever built from roles and licences quoted from your texts.
 
 Add `--json` for the same as data, including each question's quotes.
@@ -117,7 +118,7 @@ For every layer that could not derive its records, the advice says what is missi
 | L1 Sources | A clause cites a text the scope does not hold ("section 2 of the Harbour Lighting Act 2019", "under Part 7") | That text, named as the clauses word it, with the clauses that cite it and the kind to register it as |
 | L2 Obligations | The texts were read, but none states an obligation | The binding act or regulation in full, not a summary or an index |
 | L3 Components | An obligation names no component to put in place, or a characteristic (cadence, owner, retention) is not stated | Implementing guidance, recognised standards, codes of practice |
-| L4 Applicability | No licensing regime is in scope, or a role is used but not defined | Licensing, registration or scope-of-practice rules; the definitions section; coverage guidance |
+| L4 Applicability | No licensing regime is in scope, or a role is used but not defined | Licensing, registration or scope-of-practice rules; the official register of licensed entities or licence categories (kind `register`); the definitions section; coverage guidance |
 | L4 Applicability | Obligations are undetermined | Not a missing source: answer the open questions |
 | L5 Compliance activities | The text does not say who performs the obligation | Rules or guidance that designate a responsible officer or function; governance provisions |
 | L7 Risk scoring | No enforcement source is in scope, so no obligation has enforcement events | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements |

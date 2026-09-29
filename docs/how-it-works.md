@@ -10,7 +10,8 @@ A regulation is a list of obligations written as prose. An organisation only has
 
 | Term | Meaning |
 | --- | --- |
-| Source | An official text published by a lawmaker, regulator, court or standards body. It has a kind (`law`, `regulation`, `guidance`, `enforcement` …) and a publisher. |
+| Source | An official text published by a lawmaker, regulator, court or standards body. It has a kind (`law`, `regulation`, `guidance`, `enforcement`, `register` …) and a publisher. |
+| Register | An official register of licensed or authorised entities, or of licence categories (source kind `register`). L4 reads licence types from its entries; it is never read for obligations. |
 | Publisher | Who issues a source, as registered with it (`issuer`). Source advice asks for further sources from the same publisher. |
 | Clause | One unit of a source's text (an article, a section, a paragraph, a list item), kept exactly as read, with a stable reference such as `art-32/1`. |
 | Stated obligation | What one clause requires its subject to do or not do. One clause may state several. |
@@ -136,7 +137,12 @@ A few grammatical rules keep the questions honest. A passive obligation ("person
 
 **Candidate organisation profiles** are listed with the questions: one per role the obligations name ("You are 'operator'"), with the scope's jurisdictions and the conditions that role's obligations still depend on, and one per licence type ("You hold '…'"), with any role that shares its words. A candidate is only ever built from roles and licences quoted from the texts in scope; no combination is invented.
 
-**Licence types** are read only from the scope's clauses that use the words of licensing (licence, permit, registration, authorisation, certificate, accreditation). The model sees only those clauses, must cite one per type, and a name is kept only when its words are in that clause. When none is found, the blueprint carries a `no_licence_types` gap.
+**Licence types** are read only from the texts and registers in scope:
+
+- **Registers** (sources of kind `register`) are read first, without a model (`app/clhear/l4/registers.py`). An entry's labelled field whose label uses the words of licensing ("Licence type: harbour lantern keeper licence", "Permit category: Class A") gives a licence type, and so does a table whose header row names such a column ("Holder | Permit category | Status"), read down that column. Labels about the holder or the record (name, number, status, dates) are not read. A value that does not itself use a licensing word is named with its label ("Permit category Class A"). Every type is quoted, with offsets, from up to three entries that name it, and the licence records which register it came from.
+- **Licensing clauses**: the scope's other clauses that use the words of licensing (licence, permit, registration, authorisation, certificate, accreditation). The model sees only those clauses, must cite one per type, and a name is kept only when its words are in that clause.
+
+The licence types are the permitted values of the profile's `licences` (`permitted_values` in the scope's profile schema; each question says whether it came from a register or a licensing clause). When none is found, the blueprint carries a `no_licence_types` gap, and the advice suggests the licensing rules or the register that lists them.
 
 ### L5: Compliance activities
 
@@ -177,7 +183,7 @@ Every layer derives its records from L1 alone, so a layer with nothing to derive
 | L1 | `unresolved_reference` | The cited text itself, named as the clauses word it, with the clauses that cite it (`law` for an Act or Code, `standard` for a Standard, otherwise `regulation`; a bare provision takes the kind of the text citing it). When the text is registered but not in the scope, the advice says to add it to the scope. |
 | L2 | `no_duties` | The binding act or regulation in full (`law`, `regulation`) |
 | L3 | `no_measure`, `measure_name_rejected`, `characteristic_unspecified` | Implementing guidance, recognised standards, codes of practice (`guidance`, `standard`) |
-| L4 | `no_licence_types`, `role_undefined` | Licensing, registration or scope-of-practice rules; definitions sections; coverage guidance (`regulation`, `law`, `guidance`) |
+| L4 | `no_licence_types`, `role_undefined` | Licensing, registration or scope-of-practice rules; the official register of licensed entities or licence categories; definitions sections; coverage guidance (`regulation`, `law`, `register`, `guidance`) |
 | L5 | `operator_not_stated` | Rules or guidance that designate a responsible officer or function (`guidance`, `regulation`) |
 | L7 | `no_enforcement_sources` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements (`enforcement`) |
 | L8 | `no_reference_sources` | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals (`guidance`) |
@@ -214,6 +220,7 @@ A source that is missing is thereby told apart from one that does not apply.
 | `app/clhear/l2/extract.py`, `l2/registry.py` | Obligation detection rules; structure and its quotes |
 | `app/clhear/l3/generate.py`, `l3/decompose.py`, `l3/kinds.py` | Components from the model; from the obligation's own words; the subclasses |
 | `app/clhear/l4/predicates.py`, `l4/validate.py` | Applicability conditions read from the text, the three-valued rule; profiles |
+| `app/clhear/l4/licenses.py`, `l4/registers.py` | Licence types from licensing clauses (model, quote-checked) and from register entries (no model) |
 | `app/clhear/l5/map.py` | Compliance activities and their operators, quoted |
 | `app/clhear/l6/composer.py` | Set cover, minimality proof, blueprint |
 | `app/clhear/platform/gateway.py` | Model providers, retries, spend caps, call ledger |

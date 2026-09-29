@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
 from app.clhear.l1.adapters.base import SourceMeta
-from app.clhear.l1.models import family_members, source_families, sources
+from app.clhear.l1.models import INFORMATIVE_KINDS, family_members, source_families, sources
 
 FAMILIES: list[tuple[str, str, str]] = []
 FAMILY_NAMES: dict[str, str] = {}
@@ -94,7 +94,8 @@ def install(entries: list[dict]) -> None:
         entry.setdefault("issuer", "")
         entry.setdefault("canonical_url", (entry.get("fetch") or {}).get("url") or "")
         entry.setdefault("relation", "root")
-        entry.setdefault("tier", "binding")
+        # Enforcement actions and registers are read by L7, L8 and L4, never for obligations.
+        entry.setdefault("tier", "informative" if entry["kind"] in INFORMATIVE_KINDS else "binding")
         entry.setdefault("topics", [])
         entry.setdefault("source_role", "document")
         entry.setdefault("publisher", entry.get("issuer") or "")
@@ -159,6 +160,9 @@ def seed(engine: Engine) -> dict:
                     # A source registered again with another kind or reference takes it at once.
                     kind=s.get("kind") or "guidance", instrument=s.get("instrument") or "",
                 ))
+                conn.execute(family_members.update().where(
+                    family_members.c.source_id == existing, family_members.c.family_id == family_ids[s["family"]],
+                    family_members.c.relation == (s.get("relation") or "root")).values(tier=s.get("tier") or "binding"))
                 skipped += 1
                 continue
             source_id = conn.execute(

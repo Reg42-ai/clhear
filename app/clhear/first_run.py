@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy.engine import Engine
 
-SOURCE_KINDS = ("law", "regulation", "standard", "guidance", "form", "agreement", "enforcement")
+from app.clhear.l1.models import SOURCE_KINDS  # noqa: F401  (the CLI checks kinds here)
 
 
 def preview(engine: Engine, key: str) -> dict:

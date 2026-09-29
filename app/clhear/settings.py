@@ -107,7 +107,7 @@ class Settings(BaseSettings):
     clhear_bind_host: str = "127.0.0.1"
     clhear_engine_version: str = "0.2.0"
     clhear_api_version: str = "v1"
-    clhear_schema_revision: str = "0043"
+    clhear_schema_revision: str = "0044"
     clhear_image_digest: str = ""
 
     # --- community accounts & contributions (Phase C) ---

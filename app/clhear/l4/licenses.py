@@ -1,7 +1,10 @@
 # Copyright (C) 2026 Reg42 AI
 # This file is part of CLHEAR. See LICENSE (AGPL-3.0-only).
-"""L4 licence types, read only from the licensing clauses of the texts in scope.
+"""L4 licence types, read only from the licensing clauses and registers in scope.
 
+0. The entries of official registers in scope (sources of kind ``register``)
+   are read first, without a model (``l4.registers``): each licence type an
+   entry names is kept with its quote.
 1. Candidate clauses are the in-scope clauses that use the words of licensing
    in any sector: licence, permit, registration, authorisation, certificate,
    accreditation. No query names a sector's licences.
@@ -123,7 +126,8 @@ def _jurisdictions(engine: Engine) -> dict[str, str]:
 
 
 def _candidates(engine: Engine) -> list[dict]:
-    """In-scope, in-force, open clauses that use the words of licensing."""
+    """In-scope, in-force, open clauses that use the words of licensing. Registers are
+    read by ``l4.registers``, not by the model."""
     from app.clhear.l1.scopes import in_scope
 
     with engine.connect() as conn:
@@ -132,6 +136,7 @@ def _candidates(engine: Engine) -> list[dict]:
             .join(source_versions, source_versions.c.id == clauses.c.source_version_id)
             .join(sources, sources.c.id == source_versions.c.source_id)
             .where(source_versions.c.status == "in_force").where(sources.c.license == "open")
+            .where(sources.c.kind != "register")
             .where(clauses.c.public_ok.is_(True)).order_by(sources.c.key, clauses.c.ordering)).all()
     out = [{"id": r.id, "source_key": r.key, "ref": r.ref, "text": r.text or "", "text_hash": r.text_hash}
            for r in rows if in_scope(r.key) and LICENSING_WORDS.search(r.text or "")]
@@ -191,6 +196,35 @@ def _same_licence(engine: Engine, jurisdiction: str, name: str) -> str | None:
     return None
 
 
+def _from_registers(engine: Engine) -> list[str]:
+    """Write the licence types the registers in scope name; their ids."""
+    from app.clhear import evidence
+    from app.clhear.l4.registers import read
+
+    ids = []
+    for found in read(engine):
+        jur = found["jurisdiction"]
+        same = _same_licence(engine, jur, found["name"])
+        if same is not None:
+            ids.append(same)
+            continue
+        lid = f"LIC:{jur}:{_slug(found['name'])}"
+        entries = found["entries"]
+        values = dict(jurisdiction=jur, name=found["name"], issuing_regime="",
+                      clause_anchors=[{"source_key": e["clause"]["source_key"], "ref": e["clause"]["ref"],
+                                       "text_hash": e["clause"]["text_hash"]} for e in entries],
+                      status="derived", generated_by="l4.registers",
+                      evidence={"name_words_in": [evidence.whole(entries[0]["clause"])],
+                                "entries": [q for e in entries for q in e["quotes"]]})
+        with engine.begin() as conn:
+            if conn.execute(sa.select(license_types.c.id).where(license_types.c.id == lid)).first():
+                conn.execute(license_types.update().where(license_types.c.id == lid).values(**values))
+            else:
+                conn.execute(license_types.insert().values(id=lid, **values))
+        ids.append(lid)
+    return ids
+
+
 def extract_licenses(engine: Engine, llm) -> dict:
     from app.clhear import evidence
     from app.clhear.l1.scopes import active_name
@@ -198,6 +232,9 @@ def extract_licenses(engine: Engine, llm) -> dict:
     written = discarded = 0
     ids: list[str] = []
     jurisdiction_of = _jurisdictions(engine)
+    from_registers = _from_registers(engine)
+    ids += from_registers
+    written += len(from_registers)
     candidates = _candidates(engine)
     for start in range(0, len(candidates), BATCH):
         retrieved = candidates[start:start + BATCH]
@@ -257,7 +294,7 @@ def extract_licenses(engine: Engine, llm) -> dict:
         with engine.begin() as conn:
             evidence.record_gap(conn, scope=active_name() or "", layer="L4", kind="no_licence_types",
                                 subject="licences", missing="a licensing, registration or authorisation regime",
-                                detail={"licensing_clauses_read": len(candidates)})
+                                detail={"licensing_clauses_read": len(candidates), "register_types": 0})
     try:
         from app.clhear import ai_ops
 
@@ -269,6 +306,7 @@ def extract_licenses(engine: Engine, llm) -> dict:
     except Exception:
         log.exception("L4 ai_ops failed")
     return {"written": written, "discarded": discarded, "candidates": len(candidates), "ids": ids,
+            "from_registers": len(from_registers),
             "retired": retire_unsound(engine, jurisdiction_of)}
 
 

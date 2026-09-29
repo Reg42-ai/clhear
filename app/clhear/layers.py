@@ -171,12 +171,14 @@ LAYER_CATALOG: dict[str, dict] = {
             "method": "Each duty's edges are read from its own words: the jurisdiction its source "
             "declares, the addressee it names unless that is everyone, and its condition when the "
             "condition is about the addressee. Licence types are read only from the scope's licensing "
-            "clauses and kept only in their words. A profile answers the questions; a duty applies, is "
+            "clauses and the entries of its registers (sources of kind register), and kept only in their "
+            "words; they are the permitted values of the profile's licences. A profile answers the questions; a duty applies, is "
             "not applicable, or is undetermined while a question is unanswered. Candidate business profiles "
             "are offered per quoted role and per quoted licence type.",
             "generation": {
                 "nature": "deterministic reading of the duty's grammar; LLM confined to quoting licence types",
-                "technique": "Subject / condition quotes; three-valued evaluation; licensing-clause extraction with a quote check",
+                "technique": "Subject / condition quotes; three-valued evaluation; licensing-clause extraction with a "
+                             "quote check; register entries read as labelled fields or table columns, quoted",
                 "guarantee": "Every applies_to edge quotes the words it was read from; no role, condition or licence exists that is not in the texts in scope",
                 "may": ["quote a licence type from a licensing clause"],
                 "must_not": ["invent a role, condition or licence", "decide an unanswered question"],

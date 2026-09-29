@@ -37,6 +37,7 @@ from app.clhear.platform import record
 from app.clhear.l1 import change_detect, fidelity, originals, permissions, rights, spans
 from app.clhear.l1.adapters.base import CLAUSE_TYPES, Adapter, DocNode, FetchResult, SourceMeta
 from app.clhear.l1.models import (
+    INFORMATIVE_KINDS,
     change_events,
     citations,
     clause_annotations,
@@ -252,8 +253,8 @@ def ensure_source(conn: Connection, meta: SourceMeta) -> tuple[int, int]:
                 family_id=family_id,
                 source_id=source_id,
                 relation="root",
-                # enforcement sources are read by L7, never by the L2 extractor (HLD v2 §4.7)
-                tier="informative" if meta.kind == "enforcement" else "binding",
+                # enforcement and register sources are read by L7, L8 and L4, never by the L2 extractor (HLD v2 §4.7)
+                tier="informative" if meta.kind in INFORMATIVE_KINDS else "binding",
                 status="active",
                 added_via="manual",
             )
