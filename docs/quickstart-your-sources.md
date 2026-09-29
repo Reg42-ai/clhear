@@ -38,7 +38,7 @@ The kind decides which layer reads the text:
 | `guidance` | Regulator guidance, FAQs and Q&As, bulletins, inspection findings, court decisions, official journals | L3 components, L8 practices |
 | `form` | Official forms and templates | L3 components (documents to keep) |
 | `agreement` | Model contracts and agreements the texts require | L3 components |
-| `enforcement` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements | L7 enforcement records and risk |
+| `enforcement` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements | L7 enforcement records and risk; L8 practices from the remediation they order (never read for obligations) |
 | `register` | Official registers of licensed or authorised entities, lists of licence categories | L4 licence types (never read for obligations) |
 
 `--reference` is the publisher's own reference for the text, such as its number or citation ("Act No. 4 of 2019", "Regulation (AB) 2030/17"). When another text in scope cites it by that reference or by its name, the reference resolves to it.
@@ -122,7 +122,7 @@ For every layer that could not derive its records, the advice says what is missi
 | L4 Applicability | Obligations are undetermined | Not a missing source: answer the open questions |
 | L5 Compliance activities | The text does not say who performs the obligation | Rules or guidance that designate a responsible officer or function; governance provisions |
 | L7 Risk scoring | No enforcement source is in scope, so no obligation has enforcement events (risk rests only on the penalties the texts state) | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements; the act's penalty provisions, if they are not in scope |
-| L8 Practices | No guidance source is in scope, so no component has a guidance-derived practice | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals |
+| L8 Practices | No guidance or enforcement source is in scope, so no component has a practice | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals; enforcement actions or resolution agreements that order remediation |
 
 News coverage can point you to one of these official sources, but it is never used as evidence. Register the official source it refers to.
 

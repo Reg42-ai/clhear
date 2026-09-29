@@ -353,14 +353,19 @@ def item_priority(engine: Engine) -> dict:
     return score.score_items(engine)
 
 
+# L8 practices come from guidance, and from the remediation enforcement actions order.
+_NO_PRACTICE_SOURCE = "a guidance source (kind 'guidance') or an enforcement source that orders remediation (kind 'enforcement')"
+
+
 def derive_l8(engine: Engine, llm) -> dict:
     from app.clhear.l8.reference import reference_rows
 
-    if "guidance" not in _kinds_in_scope(engine):
-        return _not_built(engine, "L8", "no_reference_sources", "a guidance or reference source (kind 'guidance')")
+    if not {"guidance", "enforcement"} & _kinds_in_scope(engine):
+        return _not_built(engine, "L8", "no_reference_sources", _NO_PRACTICE_SOURCE)
     _clear_gaps(engine, "L8")
     rows = reference_rows(engine)
-    return {"reference_rows": len(rows), "mapped_to_blocks": sum(1 for r in rows if r["block_id"])}
+    return {"reference_rows": len(rows), "mapped_to_blocks": sum(1 for r in rows if r["block_id"]),
+            "remediation": sum(1 for r in rows if r["kind"] == "remediation")}
 
 
 def _counts(engine: Engine, layer: str) -> dict:
@@ -403,8 +408,8 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
                 _no_enforcement(engine, len(find(conn, scope.get("sources") or [])))
         else:
             _clear_gaps(engine, "L7")
-        if "guidance" not in kinds:
-            _not_built(engine, "L8", "no_reference_sources", "a guidance or reference source (kind 'guidance')")
+        if not {"guidance", "enforcement"} & kinds:
+            _not_built(engine, "L8", "no_reference_sources", _NO_PRACTICE_SOURCE)
         else:
             _clear_gaps(engine, "L8")
         detail = derive_l6(engine, llm, held["profiles"], withheld=held["lineage"]["withheld"])

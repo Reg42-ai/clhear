@@ -28,7 +28,7 @@ A regulation is a list of obligations written as prose. An organisation only has
 | Enforcement event | An enforcement action taken from an `enforcement` source and linked to the obligations it concerns. |
 | Stated penalty | A penalty a `law` or `regulation` in scope states for a breach: its type (imprisonment, disqualification, revocation, suspension, fine, penalty) and the maximum the clause states, quoted and linked to the obligations the penalty clause refers to. |
 | Risk score | A score per obligation and per element, built from its enforcement events, the penalties the texts state for it, and other recorded inputs. |
-| Practice | A guidance-derived practice: a quoted finding or piece of advice from a `guidance` source, linked to the component it concerns. |
+| Practice | A quoted finding or piece of advice from a `guidance` source, or the remediation an `enforcement` source orders, linked to the component it concerns. |
 | Cross-reference | A clause's mention of another text or provision ("section 2 of the Harbour Lighting Act 2019", "under Part 7"), kept with its quote and offsets. |
 | Source inventory | Every source in scope and every text their clauses cite, each `derived` (read and built), `pending` (registered, not built) or `unresolved` (cited, not registered). |
 | Source advice | For each layer that could not derive its records, the kinds of official source to add to L1 and the source kind to register each as; for a text the clauses cite but the scope does not hold, that text by name. |
@@ -179,7 +179,12 @@ L7 (Risk scoring) has two inputs, read from the sources in scope:
 
 The published weights (method `risk-v3`) are enforcement history 0.25, likelihood 0.20, financial impact 0.15, reputational, operational and regulatory attention 0.10 each, and stated penalty 0.10. Without an enforcement source, L7 is built from the stated penalties alone and the blueprint carries a `no_enforcement_sources` gap that says how many penalties the risk rests on. With neither, L7 is recorded as not built.
 
-L8 (Practices: guidance-derived practices) builds only from sources of kind `guidance`. Without one, the layer is recorded as not built, makes no model call, and the blueprint carries a gap recommending the source to add.
+L8 (Practices) builds from two kinds of source in scope, without a model:
+
+- **Guidance** (kind `guidance`): each clause is a practice, or a finding when the source is an examination report.
+- **Enforcement** (kind `enforcement`): each clause that states the remediation the action orders or the respondent undertakes ("is ordered to …", "agreed to …", corrective action, a duty with a deadline such as "shall, within 30 days, …") is a practice, marked `remediation` with the source it was `ordered_in`. The action's findings are not practices.
+
+Only the most specific clauses are read, and a clause that is the basis of an obligation is that obligation, not a practice. Each practice is quoted (`evidence`, with offsets) and names the component whose name, purpose and obligations share the most words with it. With neither kind in scope, L8 is recorded as not built and the blueprint carries a `no_reference_sources` gap.
 
 ## Source advice: what to add to L1
 
@@ -194,7 +199,7 @@ Every layer derives its records from L1 alone, so a layer with nothing to derive
 | L4 | `no_licence_types`, `role_undefined` | Licensing, registration or scope-of-practice rules; the official register of licensed entities or licence categories; definitions sections; coverage guidance (`regulation`, `law`, `register`, `guidance`) |
 | L5 | `operator_not_stated` | Rules or guidance that designate a responsible officer or function (`guidance`, `regulation`) |
 | L7 | `no_enforcement_sources` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements (`enforcement`); the act's penalty provisions, if they are not in scope (`law`) |
-| L8 | `no_reference_sources` | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals (`guidance`) |
+| L8 | `no_reference_sources` | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals (`guidance`); enforcement actions or resolution agreements that order remediation (`enforcement`) |
 
 The advice is the same for every sector. It names no regulation or authority from a list: when the sources in scope were registered with a publisher (`issuer`), it asks for the further sources from that publisher. News is never evidence; the advice says it may point to an official source to register instead. Undetermined obligations are not a source gap, and the advice points to the open questions instead. The advice for a blueprint's own gaps is in its `source_advice`; the release and `GET /v1/scopes/{name}/advice` carry it for the whole scope.
 
@@ -232,6 +237,7 @@ A source that is missing is thereby told apart from one that does not apply.
 | `app/clhear/l5/map.py` | Compliance activities and their operators, quoted |
 | `app/clhear/l6/composer.py` | Set cover, minimality proof, blueprint |
 | `app/clhear/l7/penalties.py`, `l7/score.py` | Stated penalties and their links; the published risk dimensions and scores |
+| `app/clhear/l8/reference.py` | Practices from guidance and from the remediation enforcement sources order |
 | `app/clhear/platform/gateway.py` | Model providers, retries, spend caps, call ledger |
 | `migrations/` | Numbered schema migrations, applied on startup |
 | `openapi/clhear-v1.yaml` | The API contract, checked against the app in CI |

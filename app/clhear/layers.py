@@ -307,7 +307,9 @@ LAYER_CATALOG: dict[str, dict] = {
             "inputs": ["L1", "L3", "L7"],
             "method": "Each reference row is one in-force block of a public examination report or "
             "guidance publication in L1 (a regulator's FAQs, bulletins, inspection findings or decisions), "
-            "quoted exactly, and names the L3 block whose name, purpose and required obligations "
+            "or the remediation an enforcement source orders ('is ordered to', 'agreed to', corrective "
+            "action, a duty with a deadline); a clause that is the basis of an obligation is not a practice. "
+            "Each row is quoted exactly, and names the L3 block whose name, purpose and required obligations "
             "share the most words with it; a row that shares too little names no block. Peer "
             "aggregates combine L7 scores across participating organisations within a profile "
             "cluster, stay inside the enclave, and publish only as k-anonymous aggregates.",

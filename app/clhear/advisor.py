@@ -151,8 +151,8 @@ ADVICE: dict[str, dict] = {
     },
     "no_reference_sources": {
         "layer": "L8",
-        "missing": "No guidance source is in scope, so no component has a guidance-derived practice.",
-        "summary": "Add the regulator's interpretive material and decisions on these texts.",
+        "missing": "No guidance or enforcement source is in scope, so no component has a practice.",
+        "summary": "Add the regulator's interpretive material, decisions and enforcement actions on these texts.",
         "add": [
             _add("The regulator's FAQs and official Q&As", "guidance",
                  "They answer how an obligation is met in practice; each answer is quoted against the component it informs."),
@@ -164,6 +164,9 @@ ADVICE: dict[str, dict] = {
                  "Decisions settle how an obligation is read when it is contested."),
             _add("The official gazette or journal issues that publish amendments and notices", "guidance",
                  "They keep the texts current and announce new requirements."),
+            _add("Enforcement actions or resolution agreements that order remediation", "enforcement",
+                 "The remediation a regulator orders is a practice for the component it concerns; each order is "
+                 "quoted against that component."),
         ],
         "note": "News coverage may point you to one of these official sources, but it is never used as evidence.",
     },
