@@ -275,10 +275,13 @@ LAYER_CATALOG: dict[str, dict] = {
             "and linked to the L2 obligations they cite. Each obligation's score weighs "
             "published dimensions: recency-weighted enforcement history, a likelihood calibrated "
             "on past years and scored on a held-out year, financial and reputational impact of "
-            "the linked outcomes, L2 change velocity, and L3/L5 operational reach. A company's "
+            "the linked outcomes, L2 change velocity, L3/L5 operational reach, and the most severe "
+            "penalty the binding texts in scope state for a breach (type and maximum, quoted, linked to the "
+            "obligations the penalty clause refers to). A company's "
             "item priority is a view that lays these scores onto its L6 blueprint items; no "
-            "score reads a blueprint. Every score publishes its weights, dimensions and evidence. Without an "
-            "enforcement source in scope the layer is not built and the source advice says what to add.",
+            "score reads a blueprint. Every score publishes its weights, dimensions and evidence. With no "
+            "enforcement source in scope the scores rest on the stated penalties alone, and the source advice "
+            "says what to add; with neither, the layer is not built.",
             "generation": {
                 "nature": "quantitative + grounded commentary",
                 "technique": "Formula-deterministic scores; number-echo narratives over a versioned facts file",

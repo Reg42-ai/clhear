@@ -250,7 +250,7 @@ def _numbers(text: str) -> set[str]:
     return set(re.findall(r"\b\d{1,4}/\d{1,4}\b", text or ""))
 
 
-def _in_force(conn: Connection, keys) -> dict[str, list[dict]]:
+def in_force_clauses(conn: Connection, keys) -> dict[str, list[dict]]:
     """source key -> its in-force clauses (id, ref, text, spans, ordering)."""
     from app.clhear.l1.models import clauses, source_versions, sources
 
@@ -258,7 +258,8 @@ def _in_force(conn: Connection, keys) -> dict[str, list[dict]]:
     keys = sorted(set(keys or []))
     if not keys:
         return out
-    for r in conn.execute(sa.select(sources.c.key, clauses.c.id, clauses.c.ref, clauses.c.text, clauses.c.span_start,
+    for r in conn.execute(sa.select(sources.c.key, clauses.c.id, clauses.c.ref, clauses.c.text, clauses.c.text_hash,
+                                    clauses.c.span_start,
                                     clauses.c.span_end, clauses.c.ordering, clauses.c.source_version_id)
                           .join(source_versions, source_versions.c.source_id == sources.c.id)
                           .join(clauses, clauses.c.source_version_id == source_versions.c.id)
@@ -367,7 +368,7 @@ def resolve(conn: Connection, source_keys) -> list[dict]:
     keys = sorted(set(source_keys or []))
     if not keys:
         return []
-    clauses = _in_force(conn, keys)
+    clauses = in_force_clauses(conn, keys)
     registry = registered(conn)
     kinds = {k: (registry.get(k) or {}).get("kind", "") for k in keys}
     titles = {k: (" ".join((rows[0]["text"] or "").split("\n")[0].split()) if rows else "") for k, rows in clauses.items()}
@@ -454,7 +455,7 @@ def missing(conn: Connection, source_keys, resolved: list[dict] | None = None) -
 
 def stored_clauses(conn: Connection, source_keys) -> dict[str, int]:
     """source key -> clauses of its in-force version."""
-    return {key: len(rows) for key, rows in _in_force(conn, source_keys).items()}
+    return {key: len(rows) for key, rows in in_force_clauses(conn, source_keys).items()}
 
 
 def cited_in_scope(resolved: list[dict]) -> dict[str, list[dict]]:

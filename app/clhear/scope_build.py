@@ -309,24 +309,40 @@ def _kinds_in_scope(engine: Engine) -> set[str]:
         return {r[0] for r in conn.execute(sa.select(sources.c.kind).where(sources.c.key.in_(scopes.source_keys())))}
 
 
-def _not_built(engine: Engine, layer: str, kind: str, missing: str) -> dict:
+def _not_built(engine: Engine, layer: str, kind: str, missing: str, detail: dict | None = None) -> dict:
     """A layer with no source to derive from: no rows, no model call, one gap."""
     from app.clhear import evidence
 
     _clear_gaps(engine, layer)
     with engine.begin() as conn:
         gid = evidence.record_gap(conn, scope=scopes.active_name() or "", layer=layer, kind=kind, subject=layer,
-                                  missing=missing)
+                                  missing=missing, detail=detail)
     return {"built": False, "reason": evidence.recommendation(kind), "gap": gid}
 
 
-def derive_l7(engine: Engine, llm) -> dict:
-    from app.clhear.l7 import enforcement, score
+def _no_enforcement(engine: Engine, stated: int) -> dict:
+    """No enforcement source: the gap says whether risk still rests on penalties the texts state."""
+    missing = (f"an enforcement source (kind 'enforcement'); risk rests only on the {stated} "
+               f"penalt{'y' if stated == 1 else 'ies'} the texts in scope state" if stated else
+               "an enforcement source (kind 'enforcement'), or the penalty provisions of the texts in scope")
+    return _not_built(engine, "L7", "no_enforcement_sources", missing, detail={"stated_penalties": stated})
 
+
+def derive_l7(engine: Engine, llm) -> dict:
+    """Risk inputs: the penalties the binding texts in scope state, and, stronger, the
+    enforcement events of the enforcement sources in scope. With neither, L7 is not built."""
+    from app.clhear.l7 import enforcement, penalties, score
+
+    stated = penalties.derive(engine, scopes.source_keys())
     if "enforcement" not in _kinds_in_scope(engine):
-        return _not_built(engine, "L7", "no_enforcement_sources", "an enforcement source (kind 'enforcement')")
-    _clear_gaps(engine, "L7")
-    return {"events": enforcement.ingest_events(engine), "links": enforcement.link_events(engine, llm),
+        if not stated["found"]:
+            return _no_enforcement(engine, 0)
+        _no_enforcement(engine, stated["found"])  # built from stated penalties; the stronger input is still missing
+        found = {}
+    else:
+        _clear_gaps(engine, "L7")
+        found = {"events": enforcement.ingest_events(engine), "links": enforcement.link_events(engine, llm)}
+    return {"penalties": {k: stated[k] for k in ("found", "linked_obligations")}, **found,
             "calibration": {k: v for k, v in score.calibrate(engine).items() if k in ("status", "id", "held_out_year")},
             "obligation_scores": {k: v for k, v in score.score_obligations(engine).items() if k != "bands"}}
 
@@ -381,7 +397,10 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
         # L7 and L8 run after the blueprint: record now what they will lack, and clear what they no
         # longer lack, so the blueprint says so.
         if "enforcement" not in kinds:
-            _not_built(engine, "L7", "no_enforcement_sources", "an enforcement source (kind 'enforcement')")
+            from app.clhear.l7.penalties import find
+
+            with engine.connect() as conn:
+                _no_enforcement(engine, len(find(conn, scope.get("sources") or [])))
         else:
             _clear_gaps(engine, "L7")
         if "guidance" not in kinds:

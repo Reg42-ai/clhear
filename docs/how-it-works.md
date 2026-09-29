@@ -26,7 +26,8 @@ A regulation is a list of obligations written as prose. An organisation only has
 | Evidence chain | The quotes that tie each record back to the clause text, checked again on every run. |
 | Evidence gap | A record the texts in scope could not support: what is missing, and which kind of source would supply it. |
 | Enforcement event | An enforcement action taken from an `enforcement` source and linked to the obligations it concerns. |
-| Risk score | A score per obligation and per element, built from its enforcement events and other recorded inputs. |
+| Stated penalty | A penalty a `law` or `regulation` in scope states for a breach: its type (imprisonment, disqualification, revocation, suspension, fine, penalty) and the maximum the clause states, quoted and linked to the obligations the penalty clause refers to. |
+| Risk score | A score per obligation and per element, built from its enforcement events, the penalties the texts state for it, and other recorded inputs. |
 | Practice | A guidance-derived practice: a quoted finding or piece of advice from a `guidance` source, linked to the component it concerns. |
 | Cross-reference | A clause's mention of another text or provision ("section 2 of the Harbour Lighting Act 2019", "under Part 7"), kept with its quote and offsets. |
 | Source inventory | Every source in scope and every text their clauses cite, each `derived` (read and built), `pending` (registered, not built) or `unresolved` (cited, not registered). |
@@ -171,7 +172,14 @@ The result is a pure function of its inputs: same scope, profile and layers give
 
 ### L7 and L8
 
-L7 (Risk scoring: enforcement events and risk scores) builds only from sources of kind `enforcement` in the scope, and L8 (Practices: guidance-derived practices) only from sources of kind `guidance`. Without one, the layer is recorded as not built, makes no model call, and the blueprint carries a gap recommending the source to add.
+L7 (Risk scoring) has two inputs, read from the sources in scope:
+
+- **Stated penalties** (`app/clhear/l7/penalties.py`), from sources of kind `law` or `regulation`. A clause that makes a breach an offence, or liable to imprisonment, disqualification, revocation, suspension, a fine or a penalty, gives a penalty per type, with the maximum the clause states ("a fine not exceeding 2,000 units", "for a term not exceeding one year"), both quoted with offsets. Each penalty is linked to the obligations whose provisions the clause refers to: a provision it cites ("fails to comply with section 1", resolved like any cross-reference, with every clause inside that provision), a sibling provision ("subsection (1)"), its division ("this Part") or the whole text ("this Act", "this rule"). A clause that refers to nothing is kept, unlinked. The risk dimension `stated_penalty` is the most severe penalty stated for the obligation: imprisonment, then disqualification or revocation, then suspension, then a fine or penalty, with the log of a monetary maximum. No model is called.
+- **Enforcement events**, from sources of kind `enforcement`: the stronger input. Enforcement history, likelihood, and financial and reputational impact rest on them.
+
+The published weights (method `risk-v3`) are enforcement history 0.25, likelihood 0.20, financial impact 0.15, reputational, operational and regulatory attention 0.10 each, and stated penalty 0.10. Without an enforcement source, L7 is built from the stated penalties alone and the blueprint carries a `no_enforcement_sources` gap that says how many penalties the risk rests on. With neither, L7 is recorded as not built.
+
+L8 (Practices: guidance-derived practices) builds only from sources of kind `guidance`. Without one, the layer is recorded as not built, makes no model call, and the blueprint carries a gap recommending the source to add.
 
 ## Source advice: what to add to L1
 
@@ -185,7 +193,7 @@ Every layer derives its records from L1 alone, so a layer with nothing to derive
 | L3 | `no_measure`, `measure_name_rejected`, `characteristic_unspecified` | Implementing guidance, recognised standards, codes of practice (`guidance`, `standard`) |
 | L4 | `no_licence_types`, `role_undefined` | Licensing, registration or scope-of-practice rules; the official register of licensed entities or licence categories; definitions sections; coverage guidance (`regulation`, `law`, `register`, `guidance`) |
 | L5 | `operator_not_stated` | Rules or guidance that designate a responsible officer or function (`guidance`, `regulation`) |
-| L7 | `no_enforcement_sources` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements (`enforcement`) |
+| L7 | `no_enforcement_sources` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements (`enforcement`); the act's penalty provisions, if they are not in scope (`law`) |
 | L8 | `no_reference_sources` | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals (`guidance`) |
 
 The advice is the same for every sector. It names no regulation or authority from a list: when the sources in scope were registered with a publisher (`issuer`), it asks for the further sources from that publisher. News is never evidence; the advice says it may point to an official source to register instead. Undetermined obligations are not a source gap, and the advice points to the open questions instead. The advice for a blueprint's own gaps is in its `source_advice`; the release and `GET /v1/scopes/{name}/advice` carry it for the whole scope.
@@ -223,6 +231,7 @@ A source that is missing is thereby told apart from one that does not apply.
 | `app/clhear/l4/licenses.py`, `l4/registers.py` | Licence types from licensing clauses (model, quote-checked) and from register entries (no model) |
 | `app/clhear/l5/map.py` | Compliance activities and their operators, quoted |
 | `app/clhear/l6/composer.py` | Set cover, minimality proof, blueprint |
+| `app/clhear/l7/penalties.py`, `l7/score.py` | Stated penalties and their links; the published risk dimensions and scores |
 | `app/clhear/platform/gateway.py` | Model providers, retries, spend caps, call ledger |
 | `migrations/` | Numbered schema migrations, applied on startup |
 | `openapi/clhear-v1.yaml` | The API contract, checked against the app in CI |
