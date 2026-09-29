@@ -157,6 +157,24 @@ def _source_gaps(engine: Engine, failed: list[dict]) -> None:
                                 missing=f"readable text ({item.get('error') or item.get('status')})")
 
 
+def _reference_gaps(engine: Engine, keys) -> int:
+    """A text the scope's clauses cite but the scope does not hold: name it as the clauses word it."""
+    from app.clhear import evidence
+    from app.clhear.l1 import references
+
+    with engine.begin() as conn:
+        cited = references.missing(conn, keys)
+        for item in cited:
+            first = item["cited_by"][0]
+            evidence.record_gap(conn, scope=scopes.active_name() or "", layer="L1", kind="unresolved_reference",
+                                subject=item["subject"], source_key=first["source_key"],
+                                clause_ref=first["clause_ref"], missing=f"the text of '{item['cited_as']}'",
+                                detail={"cited": item["cited_as"], "register_as": item["register_as"],
+                                        "registered_as": item["registered_as"], "cited_by": item["cited_by"]},
+                                cited=item["cited_as"], register_as=item["register_as"])
+    return len(cited)
+
+
 def _no_duties_gap(engine: Engine, keys) -> None:
     """Texts were read but no clause states a duty: say which text would."""
     import sqlalchemy as sa
@@ -397,6 +415,7 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
             report["sources"] = detail.get("sources") or {}
             report["failed_sources"] = detail.get("failed_sources") or []
             _source_gaps(engine, report["failed_sources"])
+            report["unresolved_references"] = _reference_gaps(engine, list(scope.get("sources") or []))
             if not _stored_clause_count(engine, list(scope.get("sources") or [])):
                 reasons = "; ".join(f"{f['source_key']}: {f['error'] or f['status']}" for f in report["failed_sources"])
                 raise RuntimeError("No text could be read from this scope's sources" + (f" ({reasons})" if reasons else ""))

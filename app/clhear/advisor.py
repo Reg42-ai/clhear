@@ -6,7 +6,9 @@ Every layer derives its records from the texts in scope. When a layer cannot,
 the build records an evidence gap (``app.clhear.evidence``). The advisor turns
 those gaps into advice a user can act on: the kinds of official source to add,
 why each one lets the layer derive records, and the source ``kind`` to register
-it as.
+it as. A text the clauses in scope cite but the scope does not hold is named as
+the clauses word it (``unresolved_reference``), and the source inventory lists
+every source in scope and every cited text with its status.
 
 The advice is the same for every sector. It never names a regulation or an
 authority from a list: when the sources in scope declare a publisher (the
@@ -36,6 +38,16 @@ ADVICE: dict[str, dict] = {
         "add": [
             _add("The official publication of the text (HTML, or a PDF with a text layer; run OCR on scans)",
                  "regulation", "L1 can only split and keep text it can read."),
+        ],
+    },
+    "unresolved_reference": {
+        "layer": "L1",
+        "missing": "Clauses in scope cite '{cited}', which is not among the sources in scope.",
+        "summary": "Register '{cited}' as a source of kind '{register_as}' and add it to the scope.",
+        "add": [
+            _add("{cited}", "{register_as}",
+                 "The clauses that cite it depend on its text: with it in scope the reference resolves, and the "
+                 "obligations, definitions and penalties it holds are read."),
         ],
     },
     "no_duties": {
@@ -154,12 +166,18 @@ ADVICE: dict[str, dict] = {
 }
 
 
+# What a placeholder reads as when the gap does not say (advice about several records at once).
+_DEFAULTS = {"field": "this characteristic", "role": "this role", "cited": "the cited text", "register_as": "law"}
+
+
+class _Filled(dict):
+    def __missing__(self, key):
+        return "{" + key + "}"
+
+
 def _fill(value, detail: dict):
     if isinstance(value, str):
-        try:
-            return value.format(**detail)
-        except (KeyError, IndexError):
-            return value.replace("{field}", "this characteristic").replace("{role}", "this role")
+        return value.format_map(_Filled({**_DEFAULTS, **{k: v for k, v in detail.items() if v not in (None, "")}}))
     if isinstance(value, list):
         return [_fill(v, detail) for v in value]
     if isinstance(value, dict):
@@ -200,7 +218,11 @@ def summarise(gaps: list[dict], *, issuers: list[str] | None = None, extra: list
     """Advice per gap kind, in layer order: the advice once, with how many records
     it concerns and a few examples."""
     grouped: OrderedDict[str, dict] = OrderedDict()
+    cited: list[dict] = []
     for gap in gaps:
+        if gap["kind"] == "unresolved_reference":
+            cited.append(_cited_advice(gap))
+            continue
         slot = grouped.setdefault(gap["kind"], {"count": 0, "examples": [], "detail": gap.get("detail") or {}})
         slot["count"] += 1
         if len(slot["examples"]) < 5:
@@ -218,7 +240,66 @@ def summarise(gaps: list[dict], *, issuers: list[str] | None = None, extra: list
             continue
         out.append({**advice, "count": slot["count"], "examples": slot["examples"]})
     order = {f"L{i}": i for i in range(1, 9)}
-    return sorted(out, key=lambda a: (order.get(a["layer"], 9), a["gap"]))
+    return sorted(out + cited, key=lambda a: (order.get(a["layer"], 9), a["gap"], a.get("cited", "")))
+
+
+def _cited_advice(gap: dict) -> dict:
+    """One piece of advice per text the clauses cite but the scope does not hold,
+    naming it as the clauses word it, with every clause that cites it."""
+    detail = gap.get("detail") or {}
+    cited = detail.get("cited") or gap["subject"]
+    cited_by = list(detail.get("cited_by") or [])
+    advice = advice_for("unresolved_reference", cited=cited, register_as=detail.get("register_as") or "law")
+    item = advice["add"][0]
+    item["cited_by"] = cited_by
+    if detail.get("registered_as"):
+        item["registered_as"] = detail["registered_as"]
+        advice["summary"] = f"'{cited}' is registered as '{detail['registered_as']}' but is not in this scope: add it to the scope."
+    return {**advice, "cited": cited, "count": len(cited_by) or 1,
+            "examples": [{"subject": gap["subject"], "source_key": q.get("source_key"), "clause_ref": q.get("clause_ref"),
+                          "missing": gap.get("missing")} for q in cited_by[:5]]}
+
+
+STATUS_ORDER = {"derived": 0, "pending": 1, "unresolved": 2}
+MAX_CITING = 20
+
+
+def source_inventory(conn: Connection, scope: str | None, source_keys) -> list[dict]:
+    """Every source in scope, and every text their clauses cite that the scope does not hold.
+
+    ``status`` is ``derived`` (its text is stored and the layers read it),
+    ``pending`` (registered but not built: not read yet or unreadable, or cited
+    and registered but not in this scope) or ``unresolved`` (cited, not
+    registered). A missing source is thereby told apart from one that does not
+    apply."""
+    from app.clhear import evidence
+    from app.clhear.l1 import references
+
+    keys = sorted(set(source_keys or []))
+    registry = references.registered(conn)
+    stored = references.stored_clauses(conn, keys)
+    unread = {g["subject"]: g["missing"] for g in (evidence.gaps_for(conn, scope) if scope else [])
+              if g["kind"] == "no_text"}
+    resolved = references.resolve(conn, keys)
+    citing = references.cited_in_scope(resolved)
+    out = []
+    for key in keys:
+        known = registry.get(key) or {}
+        entry = {"status": "derived" if stored.get(key) else "pending", "source_key": key,
+                 "name": known.get("name") or key, "kind": known.get("kind") or "",
+                 "reference": known.get("reference") or "", "clauses": stored.get(key, 0),
+                 "cited_by": citing.get(key, [])[:MAX_CITING]}
+        if not stored.get(key):
+            entry["reason"] = unread.get(key) or "not read yet: run the scope"
+        out.append(entry)
+    for item in references.missing(conn, keys, resolved):
+        entry = {"status": "pending" if item["registered_as"] else "unresolved", "source_key": item["registered_as"],
+                 "cited_as": item["cited_as"], "register_as": item["register_as"],
+                 "cited_by": item["cited_by"][:MAX_CITING]}
+        if item["registered_as"]:
+            entry["reason"] = "registered but not in this scope"
+        out.append(entry)
+    return sorted(out, key=lambda e: (STATUS_ORDER[e["status"]], e.get("source_key") or "", e.get("cited_as") or ""))
 
 
 def advise(conn: Connection, scope: str, source_keys=None) -> list[dict]:

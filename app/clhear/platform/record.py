@@ -110,7 +110,7 @@ def register_layer_tables(loader) -> None:
 
 # Tables that are deterministic projections of the WORM original / record store.
 PROJECTION_TABLES: frozenset[str] = frozenset(
-    {"search_units", "doc_nodes", "clauses", "citations", "clause_annotations"}
+    {"search_units", "doc_nodes", "clauses", "citations", "clause_references", "clause_annotations"}
 )
 
 

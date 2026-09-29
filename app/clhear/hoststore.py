@@ -29,6 +29,9 @@ host_sources = sa.Table(
     sa.Column("kind", sa.Text, nullable=False, default="guidance"),
     sa.Column("jurisdiction", sa.Text, nullable=False, default=""),
     sa.Column("issuer", sa.Text, nullable=False, default=""),
+    # The publisher's own reference for the text ("Act No. 12 of 2019", "2030/17"):
+    # a clause that cites it by that reference resolves to this source.
+    sa.Column("reference", sa.Text, nullable=False, default="", server_default=""),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     schema=L0_SCHEMA,
 )
@@ -111,6 +114,7 @@ def upsert_source(engine: Engine, key: str, body: dict) -> dict:
         "kind": body.get("kind", (current or {}).get("kind") or "guidance"),
         "jurisdiction": body.get("jurisdiction", (current or {}).get("jurisdiction") or ""),
         "issuer": body.get("issuer", (current or {}).get("issuer") or ""),
+        "reference": body.get("reference", (current or {}).get("reference") or ""),
     }
     if not merged["adapter"]:
         raise ValueError("adapter is required")
@@ -167,7 +171,7 @@ def registry_entries(engine: Engine, keys: list[str]) -> list[dict]:
             "enabled": bool(row["enabled"]),
             "topics": [],
             "publisher": row["issuer"] or "",
-            "instrument": row["name"] or row["key"],
+            "instrument": row.get("reference") or row["name"] or row["key"],
         })
     return entries
 

@@ -40,6 +40,8 @@ The kind decides which layer reads the text:
 | `agreement` | Model contracts and agreements the texts require | L3 components |
 | `enforcement` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements | L7 enforcement records and risk |
 
+`--reference` is the publisher's own reference for the text, such as its number or citation ("Act No. 4 of 2019", "Regulation (AB) 2030/17"). When another text in scope cites it by that reference or by its name, the reference resolves to it.
+
 `--jurisdiction` is the jurisdiction the text applies in. It becomes the first applicability condition of every obligation from that text. `--publisher` is who publishes the text (the lawmaker, regulator, court or standards body); the advice in step 7 asks for further sources from the same publisher.
 
 Check what was read before you build anything:
@@ -105,11 +107,14 @@ clhear blueprint show --release <release_id> --profile my-company
 clhear sources advise --scope my-rules
 ```
 
+The output starts with the **source inventory**: every source in the scope and every text their clauses cite, each marked `derived` (read and built), `pending` (registered but not built, or registered but not in this scope) or `unresolved` (cited but not registered). A missing source is thereby told apart from one that does not apply.
+
 For every layer that could not derive its records, the advice says what is missing, which kinds of official source would let the layer derive them, and the kind to register each as:
 
 | Layer | When | Add |
 | --- | --- | --- |
 | L1 Sources | A source produced no text | The official publication itself, as HTML or a PDF with a text layer |
+| L1 Sources | A clause cites a text the scope does not hold ("section 2 of the Harbour Lighting Act 2019", "under Part 7") | That text, named as the clauses word it, with the clauses that cite it and the kind to register it as |
 | L2 Obligations | The texts were read, but none states an obligation | The binding act or regulation in full, not a summary or an index |
 | L3 Components | An obligation names no component to put in place, or a characteristic (cadence, owner, retention) is not stated | Implementing guidance, recognised standards, codes of practice |
 | L4 Applicability | No licensing regime is in scope, or a role is used but not defined | Licensing, registration or scope-of-practice rules; the definitions section; coverage guidance |

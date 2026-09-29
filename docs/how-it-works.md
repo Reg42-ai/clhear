@@ -27,7 +27,9 @@ A regulation is a list of obligations written as prose. An organisation only has
 | Enforcement event | An enforcement action taken from an `enforcement` source and linked to the obligations it concerns. |
 | Risk score | A score per obligation and per element, built from its enforcement events and other recorded inputs. |
 | Practice | A guidance-derived practice: a quoted finding or piece of advice from a `guidance` source, linked to the component it concerns. |
-| Source advice | For each layer that could not derive its records, the kinds of official source to add to L1 and the source kind to register each as. |
+| Cross-reference | A clause's mention of another text or provision ("section 2 of the Harbour Lighting Act 2019", "under Part 7"), kept with its quote and offsets. |
+| Source inventory | Every source in scope and every text their clauses cite, each `derived` (read and built), `pending` (registered, not built) or `unresolved` (cited, not registered). |
+| Source advice | For each layer that could not derive its records, the kinds of official source to add to L1 and the source kind to register each as; for a text the clauses cite but the scope does not hold, that text by name. |
 
 ## The evidence contract
 
@@ -75,6 +77,10 @@ The text is split into clauses along its own structure:
 - **List items** (`(a)`, `(iv)`) nest under the paragraph that introduces them when that paragraph ends with a colon.
 
 References are readable and stable: `art-32/1`, `sec-4/b`, `p3`. The same text always gives the same references.
+
+**Cross-references.** When a version is stored, every clause is read for the other texts and provisions it mentions, and each mention is kept with its quote and offsets (`app/clhear/l1/references.py`). The grammar is the generic grammar of legal drafting, the same for every sector: numbered provisions (section, article, regulation, rule, part, chapter, schedule, annex: "section 3(1)(a)", "Part 7", "§ 4"), texts named "the <Title> Act / Regulation / Rule / Directive / Code / Standard" with an optional year, numbered texts ("Regulation (AB) 2030/17"), and both together ("section 2 of the Harbour Lighting Act 2019"). A provision's own label, a title line, "this Act", "the Act" and the name a text gives itself are not references. A mention repeated in a parent clause is kept once, on the most specific clause.
+
+Each build resolves the mentions against its scope. A cited text matches a source by the publisher's reference registered with it (`reference`) or by its name, ignoring case, a leading "the" and plurals (years must agree when both give one). A cited provision matches a clause by its reference (`section 3(1)` is `sec-3/1`, or at least `sec-3`). A bare provision is looked for in the citing text first. A cited text the scope does not hold becomes an `unresolved_reference` gap that names it as the clauses word it, with every clause that cites it.
 
 Before a version is stored, an independent check confirms that every stored node is a run of whole, consecutive lines of `source.txt`, in order, covering all of it. A node that changed a word, dropped a line or reordered text fails the import. When a source changes, L1 stores a new version and the clause-level difference.
 
@@ -168,6 +174,7 @@ Every layer derives its records from L1 alone, so a layer with nothing to derive
 | Layer | Gap | Add |
 | --- | --- | --- |
 | L1 | `no_text` | The official publication, readable (HTML, or a PDF with a text layer) |
+| L1 | `unresolved_reference` | The cited text itself, named as the clauses word it, with the clauses that cite it (`law` for an Act or Code, `standard` for a Standard, otherwise `regulation`; a bare provision takes the kind of the text citing it). When the text is registered but not in the scope, the advice says to add it to the scope. |
 | L2 | `no_duties` | The binding act or regulation in full (`law`, `regulation`) |
 | L3 | `no_measure`, `measure_name_rejected`, `characteristic_unspecified` | Implementing guidance, recognised standards, codes of practice (`guidance`, `standard`) |
 | L4 | `no_licence_types`, `role_undefined` | Licensing, registration or scope-of-practice rules; definitions sections; coverage guidance (`regulation`, `law`, `guidance`) |
@@ -176,6 +183,14 @@ Every layer derives its records from L1 alone, so a layer with nothing to derive
 | L8 | `no_reference_sources` | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals (`guidance`) |
 
 The advice is the same for every sector. It names no regulation or authority from a list: when the sources in scope were registered with a publisher (`issuer`), it asks for the further sources from that publisher. News is never evidence; the advice says it may point to an official source to register instead. Undetermined obligations are not a source gap, and the advice points to the open questions instead. The advice for a blueprint's own gaps is in its `source_advice`; the release and `GET /v1/scopes/{name}/advice` carry it for the whole scope.
+
+Each blueprint also carries a `source_inventory`, and `GET /v1/scopes/{name}/advice` returns it for the scope. It lists every source in scope and every text their clauses cite, each with a status:
+
+- `derived`: in scope, its text read and built (with its clause count, and the clauses of other sources that cite it);
+- `pending`: registered but not built: in scope but not read yet or unreadable (with the reason), or cited and registered but not in this scope;
+- `unresolved`: cited by the clauses in scope, not registered (with the kind to register it as).
+
+A source that is missing is thereby told apart from one that does not apply.
 
 ## Honesty guarantees
 
@@ -193,7 +208,8 @@ The advice is the same for every sector. It names no regulation or authority fro
 | `app/clhear/runner.py`, `app/clhear/scope_build.py` | One queued run; the layer-by-layer build of a scope |
 | `app/clhear/l1/adapters/document.py` | Text, HTML and PDF sources: rendering, clause structure, verification |
 | `app/clhear/evidence.py`, `app/clhear/lineage.py` | Quotes and evidence gaps; the anchoring check |
-| `app/clhear/advisor.py` | Which official sources to add to L1, per gap and layer |
+| `app/clhear/l1/references.py` | Cross-references: the generic citation grammar, and their resolution against a scope |
+| `app/clhear/advisor.py` | Which official sources to add to L1, per gap and layer; the source inventory |
 | `app/clhear/first_run.py` | Source preview, profile storage and the readable text the CLI prints |
 | `app/clhear/l2/extract.py`, `l2/registry.py` | Obligation detection rules; structure and its quotes |
 | `app/clhear/l3/generate.py`, `l3/decompose.py`, `l3/kinds.py` | Components from the model; from the obligation's own words; the subclasses |

@@ -27,6 +27,7 @@ class SourceBody(BaseModel):
     kind: str = "guidance"
     jurisdiction: str = ""
     issuer: str = ""
+    reference: str = ""
 
 
 class SourceCreate(SourceBody):
@@ -97,6 +98,7 @@ def _source_out(row: dict) -> dict:
         "kind": row["kind"],
         "jurisdiction": row["jurisdiction"],
         "issuer": row["issuer"],
+        "reference": row.get("reference") or "",
         "updated_at": _iso(row["updated_at"]),
     }
 
@@ -225,7 +227,7 @@ def create_app() -> FastAPI:
 
     @application.get("/v1/scopes/{name}/advice")
     def scope_advice(name: str) -> dict:
-        from app.clhear.advisor import advise
+        from app.clhear.advisor import advise, source_inventory
         from app.clhear.l1 import scopes
 
         try:
@@ -233,7 +235,8 @@ def create_app() -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         with _engine().connect() as conn:
-            return {"scope": name, "source_advice": advise(conn, name, keys)}
+            return {"scope": name, "source_advice": advise(conn, name, keys),
+                    "source_inventory": source_inventory(conn, name, keys)}
 
     @application.put("/v1/profiles/{profile_id}")
     def put_profile(profile_id: str, body: ProfileBody) -> dict:
@@ -415,6 +418,7 @@ def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> di
         "open_questions": composition.get("open_questions") or [],
         "evidence_gaps": composition.get("evidence_gaps") or [],
         "source_advice": composition.get("source_advice") or [],
+        "source_inventory": composition.get("source_inventory") or [],
         "profile_warnings": composition.get("profile_warnings") or [],
         "scope": composition.get("scope"),
         **({"sample": True} if composition.get("sample") else {}),

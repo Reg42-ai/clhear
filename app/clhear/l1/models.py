@@ -205,6 +205,7 @@ STAGE_INFO = {
     "annotate": "Deterministically classify every clause (definition, requirement, enforcement, other) and inherit topic tags from the curated source metadata — the orientation layer for readers.",
     "index": "Build the hybrid search units: each clause in distilled form (short name + path + classification + text) plus substantial paragraphs with their clause heading — the corpus becomes findable by citation, exact tokens, or plain words.",
     "citations": "Mine every clause for references to other instruments (EU acts, UK SIs/Acts, US CFR/USC); resolve them to family members, mark cross-family references, and file unknown instruments as discovery candidates for a human — the family-completeness signal.",
+    "references": "Record every mention of another text or provision (\"section 3 of the <Title> Act\", \"under Part 7\") with its quote and offsets, in generic drafting grammar; a build resolves them against its scope's sources.",
     "diff": "Clause-level comparison against the previous version (aligned by stable references) producing the change event.",
     "relay": "Ship the recorded change events from the transactional outbox to the SQS event queue.",
     "drain": "Consume the queued events worker-style (idempotent on event id), leaving the queue clean.",
@@ -357,6 +358,29 @@ citations = sa.Table(
         default="open",
     ),
     sa.Column("reason", sa.Text, nullable=False, default=""),
+)
+
+# Generic cross-references (l1.references): each mention in a clause of another
+# text or provision, quoted with offsets into clauses.text. Resolution against a
+# scope's sources happens at build time, so the rows name what the text says only.
+clause_references = sa.Table(
+    "clause_references",
+    metadata,
+    sa.Column("id", BigId, sa.Identity(), primary_key=True),
+    sa.Column("source_version_id", BigId, sa.ForeignKey(f"{L1_SCHEMA}.source_versions.id"), nullable=False),
+    sa.Column("from_clause_id", BigId, sa.ForeignKey(f"{L1_SCHEMA}.clauses.id"), nullable=False),
+    sa.Column("source_key", sa.Text, nullable=False),
+    sa.Column("clause_ref", sa.Text, nullable=False),
+    sa.Column("start_offset", sa.Integer, nullable=False),
+    sa.Column("end_offset", sa.Integer, nullable=False),
+    sa.Column("quote", sa.Text, nullable=False),
+    sa.Column("cited_path", sa.Text, nullable=False, default=""),  # "section 3(1)" as written
+    sa.Column("path_ref", sa.Text, nullable=False, default=""),  # "sec-3/1", the clause reference it points at
+    sa.Column("cited_instrument", sa.Text, nullable=False, default=""),  # "the <Title> Act 2019" as written
+    sa.Column("designator", sa.Text, nullable=False, default=""),
+    sa.Column("number", sa.Text, nullable=False, default=""),
+    sa.Column("year", sa.Text, nullable=False, default=""),
+    sa.Index("clause_references_version_idx", "source_version_id"),
 )
 
 # Accept/reject happens via l0.proposals (HLD §6.2).
@@ -574,6 +598,7 @@ ALL_TABLES = (
     clause_annotations,
     search_units,
     citations,
+    clause_references,
     discovery_candidates,
     change_events,
     parse_hints,
