@@ -100,6 +100,8 @@ clhear export --release <release_id from quickstart> --profile example-profile
 
 ## Run it on your own texts
 
+[docs/quickstart-your-sources.md](docs/quickstart-your-sources.md) walks the whole path with the `clhear` command alone: register your texts, read the questions they raise and the candidate profiles, answer them, read the blueprint, and add the sources each layer asks for. The steps below do the same over the HTTP API.
+
 ### 1. Connect a model
 
 | `CLHEAR_LLM_PROVIDER` | Also set | Default model |
@@ -173,6 +175,10 @@ curl -s localhost:8000/v1/releases/$RELEASE_ID/blueprints/payments-startup
 ```
 
 The same run from the command line, once source, scope and profile exist: `clhear run --scope security-baseline --profile-id payments-startup`.
+
+### 6. Add the sources the layers ask for
+
+A layer with nothing in scope to derive its records from says so. Each blueprint and release carries `source_advice`: for every such layer, what is missing, which kinds of official source would supply it (for example enforcement actions and penalty notices for L7 risk, or the regulator's FAQs, guidance and court decisions for L8), and the source `kind` to register each as. `GET /v1/scopes/{name}/advice` and `clhear sources advise --scope <name>` return the same. `GET /v1/profile-schema?scope=<name>` also lists `candidates`: business profiles built from the roles and licence types quoted from your texts, to start a profile from.
 
 [examples/security-baseline/run.sh](examples/security-baseline/run.sh) does all of this for one text and two organisations, and prints both blueprints.
 
@@ -255,6 +261,13 @@ Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote
 | `clhear export --release R --profile P [--out FILE]` | Write one blueprint as JSON |
 | `clhear release --release R [--out DIR]` | Write a whole stored release to a directory |
 | `clhear validate FILE [--contribution]` | Check a profile or a contribution proposal |
+| `clhear sources add KEY (--url U \| --path F \| --text-file F) [--kind K --jurisdiction J --issuer I --name N]` | Register a source |
+| `clhear sources list` / `clhear sources test KEY` | List sources; preview what a source's adapter reads, storing nothing |
+| `clhear sources advise --scope S [--json]` | Which official sources to add, per layer |
+| `clhear scope create NAME SOURCE...` | Name a scope |
+| `clhear profile questions --scope S [--json]` | The questions a built scope raises, and candidate profiles |
+| `clhear profile set ID [--file F \| --jurisdiction --role --not-role --condition fact=true --licence]` | Store a profile |
+| `clhear blueprint show --release R --profile P` | A blueprint as readable text |
 
 ## HTTP API reference
 

@@ -101,7 +101,9 @@ A few grammatical rules keep the questions honest. A passive duty ("personal dat
 
 **The rule** is three-valued. A duty *applies* when every edge is answered and matches the profile, is *not applicable* when an answer fails (the failed edge and its quote are the reason), and is *undetermined* while any question it raises has no answer. A duty with no edges applies to every organisation.
 
-`GET /v1/profile-schema?scope=<name>` lists the questions a built scope raises, with quotes. A role that no text in scope defines is an evidence gap (`role_undefined`).
+`GET /v1/profile-schema?scope=<name>` (or `clhear profile questions --scope <name>`) lists the questions a built scope raises, with quotes. A role that no text in scope defines is an evidence gap (`role_undefined`).
+
+**Candidate business profiles** are listed with the questions: one per role the duties name ("You are 'operator'"), with the scope's jurisdictions and the conditions that role's duties still depend on, and one per licence type ("You hold '…'"), with any role that shares its words. A candidate is only ever built from roles and licences quoted from the texts in scope; no combination is invented.
 
 **Licence types** are read only from the scope's clauses that use the words of licensing (licence, permit, registration, authorisation, certificate, accreditation). The model sees only those clauses, must cite one per type, and a name is kept only when its words are in that clause. When none is found, the blueprint carries a `no_licence_types` gap.
 
@@ -134,6 +136,22 @@ The result is a pure function of its inputs: same scope, profile and layers give
 
 L7 (enforcement records and risk scores) builds only from sources of kind `enforcement` in the scope, and L8 (reference practice) only from sources of kind `guidance`. Without one, the layer is recorded as not built, makes no model call, and the blueprint carries a gap recommending the source to add.
 
+## Source advice: what to add to L1
+
+Every layer derives its records from L1 alone, so a layer with nothing to derive them from is answered with advice, not with made-up records. The source advisor (`app/clhear/advisor.py`) turns each kind of evidence gap into the kinds of official source that would let that layer derive its records, why, and the source `kind` to register each as:
+
+| Layer | Gap | Add |
+| --- | --- | --- |
+| L1 | `no_text` | The official publication, readable (HTML, or a PDF with a text layer) |
+| L2 | `no_duties` | The binding act or regulation in full (`law`, `regulation`) |
+| L3 | `no_measure`, `measure_name_rejected`, `characteristic_unspecified` | Implementing guidance, recognised standards, codes of practice (`guidance`, `standard`) |
+| L4 | `no_licence_types`, `role_undefined` | Licensing, registration or scope-of-practice rules; definitions sections; coverage guidance (`regulation`, `law`, `guidance`) |
+| L5 | `operator_not_stated` | Rules or guidance that designate a responsible officer or function (`guidance`, `regulation`) |
+| L7 | `no_enforcement_sources` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements (`enforcement`) |
+| L8 | `no_reference_sources` | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals (`guidance`) |
+
+The advice is the same for every sector. It names no regulation or authority from a list: when the sources in scope were registered with an `issuer`, it asks for the further sources from that publisher. News is never evidence; the advice says it may point to an official source to register instead. Undetermined duties are not a source gap, and the advice points to the open questions instead. The advice for a blueprint's own gaps is in its `source_advice`; the release and `GET /v1/scopes/{name}/advice` carry it for the whole scope.
+
 ## Honesty guarantees
 
 - A run where no source produced text fails, and says which source failed and why.
@@ -149,7 +167,9 @@ L7 (enforcement records and risk scores) builds only from sources of kind `enfor
 | `app/clhear/cli.py`, `app/clhear/api.py` | The `clhear` command and the `/v1` HTTP API |
 | `app/clhear/runner.py`, `app/clhear/scope_build.py` | One queued run; the layer-by-layer build of a scope |
 | `app/clhear/l1/adapters/document.py` | Text, HTML and PDF sources: rendering, clause structure, verification |
-| `app/clhear/evidence.py`, `app/clhear/lineage.py` | Quotes, evidence gaps and their recommendations; the lineage check |
+| `app/clhear/evidence.py`, `app/clhear/lineage.py` | Quotes and evidence gaps; the lineage check |
+| `app/clhear/advisor.py` | Which official sources to add to L1, per gap and layer |
+| `app/clhear/first_run.py` | Source preview, profile storage and the readable text the CLI prints |
 | `app/clhear/l2/extract.py`, `l2/registry.py` | Duty detection rules; structure and its quotes |
 | `app/clhear/l3/generate.py`, `l3/decompose.py`, `l3/kinds.py` | Measures from the model; from the duty's own words; the kinds |
 | `app/clhear/l4/predicates.py`, `l4/validate.py` | Questions read from the text, the three-valued rule; profiles |

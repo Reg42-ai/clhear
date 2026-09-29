@@ -156,8 +156,39 @@ def profile_schema(conn: Connection, scope: str | None = None) -> dict:
     asked = questions(conn, keys)
     asked["licences"] = licence_questions(conn, keys)
     built = bool(asked["roles"] or asked["conditions"] or asked["licences"]) or _has_obligations(conn, keys)
-    return {"fields": fields, "scope": scope, "questions": asked,
+    return {"fields": fields, "scope": scope, "questions": asked, "candidates": candidate_profiles(asked),
             **({} if built else {"note": "This scope has not been built yet: run it once to derive its questions."})}
+
+
+def candidate_profiles(asked: dict) -> list[dict]:
+    """Business profiles a user can start from, made only of what the texts in scope name.
+
+    One per addressee the duties name ("You are '<role>'"), with the conditions
+    those duties depend on left as questions; one per licence type the licensing
+    clauses establish ("You hold '<licence>'"), with any role that shares its
+    words. Nothing is combined that the texts do not quote."""
+    from app.clhear.evidence import content_words
+
+    jurisdictions = list(asked.get("jurisdictions") or [])
+    conditions = asked.get("conditions") or []
+    out = []
+    for role in asked.get("roles") or []:
+        duties = set(role["duties"])
+        depends = [{"id": c["id"], "fact": c["fact"], "quotes": c["quotes"][:1]}
+                   for c in conditions if duties & set(c["duties"])]
+        out.append({"name": f"You are '{role['label']}'", "basis": "role",
+                    "attributes": {"jurisdictions": jurisdictions, "roles": [role["role"]]},
+                    "to_answer": depends, "duties": len(duties), "quotes": role["quotes"][:2]})
+    for lic in asked.get("licences") or []:
+        words = set(content_words(lic["name"]))
+        roles = [r["role"] for r in asked.get("roles") or [] if words & set(content_words(r["label"]))]
+        attributes = {"jurisdictions": [lic["jurisdiction"]] if lic["jurisdiction"] not in ("", "*") else jurisdictions,
+                      "licences": [lic["name"]]}
+        if roles:
+            attributes["roles"] = roles
+        out.append({"name": f"You hold '{lic['name']}'", "basis": "licence", "attributes": attributes,
+                    "to_answer": [], "duties": None, "quotes": lic["quotes"][:2]})
+    return sorted(out, key=lambda c: (c["basis"] != "role", -(c["duties"] or 0), c["name"]))
 
 
 def _has_obligations(conn: Connection, keys) -> bool:

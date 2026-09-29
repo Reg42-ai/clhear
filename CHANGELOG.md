@@ -4,6 +4,12 @@
 
 A run over your own texts now produces a real, traceable blueprint, in any sector. In 0.1.0 the live path could not: pasted text never imported, model calls failed quietly, and runs over different scopes mixed. Every record in the blueprint is now quoted from the texts in scope, and what they cannot support is reported instead of guessed.
 
+### Guidance for your own texts
+- **Source advice.** Each layer that cannot derive its records from the texts in scope says which official sources to add to L1, why, and the source kind to register each as: the binding text for L2; implementing guidance and standards for L3; licensing rules and definitions for L4; officer designations for L5; enforcement actions, penalty notices and resolution agreements for L7; FAQs, guidance, inspection findings, court decisions and official journals for L8. Blueprints and releases carry `source_advice`; new `GET /v1/scopes/{name}/advice`. When sources declare an `issuer`, the advice asks for the further sources from that publisher.
+- A scope whose texts state no duty records a `no_duties` gap, and an unreadable source a `no_text` gap.
+- **Candidate business profiles.** `GET /v1/profile-schema?scope=` lists `candidates`: one per quoted role and one per quoted licence type, with the conditions still to answer.
+- **The whole first run from the command line**, with no server: `clhear sources add|list|test|advise`, `clhear scope create`, `clhear profile questions|set`, `clhear blueprint show`. `clhear run` prints the lineage check. New guide: `docs/quickstart-your-sources.md`.
+
 ### Grounded in the texts
 - Every derived record carries its evidence: quotes of the clause text with offsets (duties and their subject, action and condition; measures; characteristics; applicability edges; activities; licence types).
 - Before composing, each run checks every quote again against the stored clause and withholds any record that fails. The release reports it as `lineage` (`rows`, `anchored`, `unanchored`).
@@ -50,4 +56,4 @@ A run over your own texts now produces a real, traceable blueprint, in any secto
 ### Upgrading from 0.1.0
 - Schema revisions `0041` and `0042` are applied on startup. `0042` adds the evidence columns and `evidence_gaps`, removes the rows the retired catalog seeded, and closes applicability edges written in the old attribute vocabulary; the next run derives them again from your texts.
 - **Profiles change shape (breaking).** `authorisations`, `products`, `customer_base`, `channels`, `data_footprint`, `crypto_services` and `financial_entity_dora` are no longer accepted. Run each scope once, read `GET /v1/profile-schema?scope=<name>`, and answer its `roles` and `conditions`.
-- `GET /v1/profile-schema` takes `?scope=`. Blueprints gain `undetermined`, `open_questions`, `evidence_gaps` and `profile_warnings`; releases gain `lineage`.
+- `GET /v1/profile-schema` takes `?scope=` and returns `candidates`. Blueprints gain `undetermined`, `open_questions`, `evidence_gaps`, `source_advice` and `profile_warnings`; releases gain `lineage` and `source_advice`.

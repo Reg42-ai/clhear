@@ -138,9 +138,38 @@ def derive_l2(engine: Engine, llm) -> dict:
     with engine.begin() as conn:
         # A new L1 version gives unchanged clauses new ids: quotes of the same words follow them.
         reanchored = evidence.reanchor(conn)
+    _clear_gaps(engine, "L2")
+    _no_duties_gap(engine, chosen)
     return {"extraction": extraction, "reanchored": reanchored, "triage": triage_duties(engine, llm),
             "structured": refine_structured(engine, llm), "consolidation": draft_and_propose(engine, llm),
             "dedupe": consolidate(engine), "review": review_obligations(engine, llm)}
+
+
+def _source_gaps(engine: Engine, failed: list[dict]) -> None:
+    """A source that could not be read: say what to register instead."""
+    from app.clhear import evidence
+
+    _clear_gaps(engine, "L1")
+    with engine.begin() as conn:
+        for item in failed:
+            evidence.record_gap(conn, scope=scopes.active_name() or "", layer="L1", kind="no_text",
+                                subject=item["source_key"], source_key=item["source_key"],
+                                missing=f"readable text ({item.get('error') or item.get('status')})")
+
+
+def _no_duties_gap(engine: Engine, keys) -> None:
+    """Texts were read but no clause states a duty: say which text would."""
+    import sqlalchemy as sa
+
+    from app.clhear import evidence
+    from app.clhear.derived_models import obligations
+
+    with engine.begin() as conn:
+        live = conn.execute(sa.select(sa.func.count()).select_from(obligations).where(
+            obligations.c.source_key.in_(list(keys or [])), obligations.c.status.in_(("derived", "validated")))).scalar()
+        if keys and not live:
+            evidence.record_gap(conn, scope=scopes.active_name() or "", layer="L2", kind="no_duties", subject="L2",
+                                missing="a clause that states a duty", detail={"sources": list(keys)})
 
 
 def derive_l3(engine: Engine, llm) -> dict:
@@ -367,6 +396,7 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
         if layer == "L1":
             report["sources"] = detail.get("sources") or {}
             report["failed_sources"] = detail.get("failed_sources") or []
+            _source_gaps(engine, report["failed_sources"])
             if not _stored_clause_count(engine, list(scope.get("sources") or [])):
                 reasons = "; ".join(f"{f['source_key']}: {f['error'] or f['status']}" for f in report["failed_sources"])
                 raise RuntimeError("No text could be read from this scope's sources" + (f" ({reasons})" if reasons else ""))
