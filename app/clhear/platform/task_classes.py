@@ -93,7 +93,7 @@ TASK_CLASS_LIST: tuple[TaskClass, ...] = (
     TaskClass("l2_change", "L2", "extraction", True, _DERIVATION_LADDER, 0.90,
               "L1 clause change -> which obligations change how"),
     TaskClass("l3_decompose", "L3", "structured_drafting", True, _HARD_LADDER, 0.85,
-              "Obligation -> building blocks (8 kinds)"),
+              "Obligation -> components (8 kinds)"),
     TaskClass("l3_characterize", "L3", "extraction", True, _DERIVATION_LADDER, 0.88,
               "Fill fixed characteristic schema from obligation text"),
     TaskClass("l4_enumerate", "L4", "extraction", True, _DERIVATION_LADDER, 0.90,

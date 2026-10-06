@@ -26,7 +26,7 @@ from sqlalchemy.engine import Connection, Engine
 from app.clhear import evidence
 from app.clhear.derived_models import activities as activities_t
 from app.clhear.derived_models import blocks, obligations, operates, products_services, requires
-from app.clhear.l2.registry import PRONOUNS, binds_subject, field_quotes, is_universal, obligation_clauses
+from app.clhear.l2.registry import addressee, field_quotes, obligation_clauses
 from app.clhear.l3.decompose import measure_phrase
 from app.clhear.platform import record
 from app.clhear.platform.events import publish_layer_event
@@ -164,8 +164,7 @@ def read_activity(ob: dict, clauses: list[dict]) -> dict | None:
     quotes = field_quotes(phrase, clauses) if phrase else None
     if not quotes:
         return None
-    operator = "" if (not subject or subject.lower() in PRONOUNS or is_universal(subject)
-                      or not binds_subject(ob)) else subject
+    operator = addressee(ob)  # a party the duty binds; not a thing it is about, not "every organisation"
     operator_quotes = (field_quotes(operator, clauses) or []) if operator else []
     if operator and not operator_quotes:
         operator = ""
