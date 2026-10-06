@@ -14,6 +14,7 @@ authority from a list: when the sources in scope declare a publisher (the
 """
 from __future__ import annotations
 
+import re
 from collections import OrderedDict
 
 import sqlalchemy as sa
@@ -154,6 +155,33 @@ ADVICE: dict[str, dict] = {
 }
 
 
+# When one gap kind concerns several records, its advice names them instead of one.
+PLURAL = {
+    "characteristic_unspecified": {
+        "missing": "The texts do not state {count} characteristics of the components, for example {names}.",
+        "summary": "Add the guidance or standards that specify these characteristics.",
+        "words": {"field": "these characteristics"},
+    },
+    "role_undefined": {
+        "missing": "The texts use {count} roles that no clause in scope defines: {names}.",
+        "summary": "Add the definitions section, or the acts that define these roles.",
+        "words": {"role": "these roles"},
+    },
+}
+
+
+def _gap_name(gap: dict) -> str:
+    """A short name for one gap record: the role or the characteristic and its component."""
+    detail = gap.get("detail") or {}
+    if gap.get("kind") == "role_undefined":
+        found = re.search(r"'(.+)'", gap.get("missing") or "")
+        return found.group(1) if found else (gap.get("subject") or "").removeprefix("role:")
+    if detail.get("key"):
+        key = detail["key"].replace("_", " ")
+        return f"{key} of '{detail['block']}'" if detail.get("block") else key
+    return ""
+
+
 def _fill(value, detail: dict):
     if isinstance(value, str):
         try:
@@ -201,22 +229,38 @@ def summarise(gaps: list[dict], *, issuers: list[str] | None = None, extra: list
     it concerns and a few examples."""
     grouped: OrderedDict[str, dict] = OrderedDict()
     for gap in gaps:
-        slot = grouped.setdefault(gap["kind"], {"count": 0, "examples": [], "detail": gap.get("detail") or {}})
+        slot = grouped.setdefault(gap["kind"], {"count": 0, "examples": [], "names": [], "detail": gap.get("detail") or {}})
         slot["count"] += 1
         if len(slot["examples"]) < 5:
             slot["examples"].append({k: gap.get(k) for k in ("subject", "source_key", "clause_ref", "missing")})
+        name = _gap_name(gap)
+        if name and name not in slot["names"] and len(slot["names"]) < 5:
+            slot["names"].append(name)
     for kind in extra or []:
-        grouped.setdefault(kind, {"count": 1, "examples": [], "detail": {}})
+        grouped.setdefault(kind, {"count": 1, "examples": [], "names": [], "detail": {}})
     out = []
     for kind, slot in grouped.items():
+        many = PLURAL.get(kind) if slot["count"] > 1 else None
         detail = slot["detail"] if slot["count"] == 1 else {}
         detail = {**detail, "field": (detail.get("key") or "").replace("_", " "), "role": detail.get("role", "")}
-        if kind == "role_undefined" and slot["count"] == 1 and slot["examples"]:
-            detail["role"] = slot["examples"][0]["subject"].removeprefix("role:")
+        if kind == "role_undefined" and slot["count"] == 1 and slot["names"]:
+            detail["role"] = slot["names"][0]
+        if many:
+            detail.update(many["words"])
         advice = advice_for(kind, issuers=issuers, **detail)
         if advice is None:
             continue
-        out.append({**advice, "count": slot["count"], "examples": slot["examples"]})
+        if many:
+            names = ", ".join(f"'{n}'" if kind == "role_undefined" else n for n in slot["names"]) or "several"
+            more = slot["count"] - len(slot["names"]) if slot["names"] else 0
+            names += f" and {more} more" if more > 0 else ""
+            advice["missing"] = many["missing"].format(count=slot["count"], names=names)
+            advice["summary"] = many["summary"]
+            for item in advice.get("add") or []:
+                for key in ("source", "why"):
+                    if isinstance(item.get(key), str):
+                        item[key] = item[key].replace("'these roles'", "these roles")
+        out.append({**advice, "count": slot["count"], "examples": slot["examples"], "names": slot["names"]})
     order = {f"L{i}": i for i in range(1, 9)}
     return sorted(out, key=lambda a: (order.get(a["layer"], 9), a["gap"]))
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.2.1
+
+Who a duty binds is read as a party, never a thing, a heading or an introductory phrase, so an organisation can answer every question a scope raises.
+
+### Who a duty binds (L2, L4)
+- **The subject without what precedes it.** A heading kept in the clause ("General Requirements Each member"), a footnote number, a discourse marker ("In particular,"), a report of another text ("Regulatory Notice 11-39 states that a firm") and a proviso ("; provided, however, that") are no longer read as the subject. A leading condition or time phrase with commas ("When sponsoring a seminar, forum, radio or television interview, ..., persons associated with members") becomes the duty's condition.
+- **Party or thing.** A subject is an organisation ("member"), a person or function inside one ("Supervisory Analyst", "associated person"), anyone ("any person") or a thing the duty is about ("Communications", "the illustration"). Things raise no question; a thing's relative clause and a condition about a thing or a person time the duty instead of deciding whether it applies.
+- **Questions an organisation can answer.** "Are you a 'member'?" for an organisation; "Does your organisation have a 'Supervisory Analyst'?" for a person or function; conditions as sentences in the clause's words ("Does your organisation intend to communicate ... through a text messaging app or chat service?"). Variants of one role ("appropriately qualified registered principal", "appropriately qualified principal") are one question. `open_questions` and `GET /v1/profile-schema` carry `party` and `ask`.
+- A participle after an organisation narrows who is bound: "Firms registered under the Investment Advisers Act" asks "Is your organisation registered under the Investment Advisers Act?".
+- "shall not apply with regard to" is read as scope, not a duty.
+
+### Components (L3, L5)
+- **Roles.** A person or function a duty is addressed to is a Role component the duty requires, besides its measure; processes it performs carry it as `performing_role`.
+- **Documents.** A duty that says what something contains ("The supervisory procedures shall include ...", "shall set forth ...") names a Document (its subject), with what it must contain as `mandatory_sections`.
+- Phrasal verbs are one verb ("set forth", "set out", "carry out"); "ensure that ..." is a Process; names no longer end on a preposition or an article.
+- A thing is never a component's performing role or an activity's operator.
+
+### Source advice
+- Advice for several gaps of one kind names them ("The texts use 4 roles that no clause in scope defines: 'member', ...") instead of printing empty placeholders.
+
+### On a scope of three US securities communications texts (offline run, profile `member: true`)
+| | 0.2.0 | 0.2.1 |
+|---|---|---|
+| Obligations that apply | 33 | 61 |
+| Undetermined | 38 | 8 |
+| Role questions | 29 | 4 |
+| Condition questions | 12 | 2 |
+| `role_undefined` gaps | 58 | 4 |
+
 ## 0.2.0
 
 A run over your own texts now produces a real, traceable reference blueprint, in any sector. In 0.1.0 the live path could not: pasted text never imported, model calls failed quietly, and runs over different scopes mixed. Every record in the blueprint is now quoted from the texts in scope, and what they cannot support is reported instead of guessed.

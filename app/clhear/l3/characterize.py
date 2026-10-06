@@ -61,7 +61,7 @@ _CUSTODY = re.compile(r"\b((?:segregat\w+|held (?:in|with|at|on trust)|kept sepa
 _QUORUM = re.compile(r"\b((?:quorum|composed of|comprising|consist(?:s|ing)? of|members? of|at least \w+ members?)[^.;]{0,60})", re.I)
 _MANDATE = re.compile(r"\b((?:responsible for|oversee\w*|approve\w*|decide\w*|review\w*|monitor\w*)[^.;]{0,80})", re.I)
 _SLA = re.compile(r"\b(within \d+ (?:business |working |calendar )?(?:days?|hours?|months?|weeks?)|no later than [^.;,]{3,40}|by [\w ]{3,30}? each year|without (?:undue )?delay)\b", re.I)
-_SECTIONS = re.compile(r"\b(?:cover(?:s|ing)?|set(?:s|ting)? out|includ(?:e|es|ing)|specif(?:y|ies|ying)|address(?:es|ing)?|describ(?:e|es|ing))\s+([^.;]{10,160})", re.I)
+_SECTIONS = re.compile(r"\b(?:cover(?:s|ing)?|set(?:s|ting)? (?:out|forth)|includ(?:e|es|ing)|contain(?:s|ing)?|specif(?:y|ies|ying)|address(?:es|ing)?|describ(?:e|es|ing))\s+([^.;]{10,160})", re.I)
 
 
 def _first(pattern: re.Pattern, text: str, group: int = 0) -> str:
@@ -91,11 +91,12 @@ def extract_value(kind: str, key: str, ob: dict) -> str:
     if key == "cadence":
         return _first(_CADENCE, full)
     if key in ("performing_role", "owner"):
-        from app.clhear.l2.registry import binds_subject, is_universal
+        from app.clhear.l2.registry import addressee
 
-        # Only an addressee the duty binds can own or perform it, not the document a content duty describes.
-        return subject if (subject and binds_subject(ob) and not is_universal(subject)
-                           and subject.lower() in full.lower()) else ""
+        # Only a party the duty binds can own or perform it: not the document a content duty
+        # describes, nor a thing the duty is about ("Communications may not ...").
+        party = addressee(ob)
+        return party if party and party.lower() in full.lower() else ""
     if key == "approver":
         return _first(_APPROVER, full, 1)
     if key == "trigger":
