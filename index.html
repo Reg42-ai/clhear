@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Don’t Panic. Regulation is Cool.</title>
+<meta name="description" content="A letter from Avner Yoffe about what happens when AI reaches compliance.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta property="og:title" content="Don’t Panic. Regulation is Cool.">
+<meta property="og:description" content="A letter from Avner Yoffe about what happens when AI reaches compliance.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://clhear.org/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B1124'/%3E%3Cpath d='M4 18 Q 9 10 14 18 T 24 18 T 34 18' fill='none' stroke='%2338DFDC' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column for one long argument; a quiet rail of part numbers on wide screens; the tide line is the only thing that moves. */
+:root {
+  --paper: #F4F7F8;
+  --surface: #E9EFF1;
+  --ink: #0E1630;
+  --muted: #56627A;
+  --rule: #D3DBE2;
+  --accent: #0A7A77;
+  --accent-mark: #17AFAC;
+  --accent-tint: rgba(23, 175, 172, 0.12);
+  --chart-accent: #159C99;
+  --chart-muted: #C2CBD5;
+  --chart-axis: #8893A6;
+  --font-display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-ui: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0B1124; --surface: #111A35; --ink: #E7ECF5; --muted: #9AA6BD;
+    --rule: #233052; --accent: #38DFDC; --accent-mark: #38DFDC;
+    --accent-tint: rgba(56, 223, 220, 0.13); --chart-accent: #38DFDC;
+    --chart-muted: #3B4869; --chart-axis: #6F7D9A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0B1124; --surface: #111A35; --ink: #E7ECF5; --muted: #9AA6BD;
+  --rule: #233052; --accent: #38DFDC; --accent-mark: #38DFDC;
+  --accent-tint: rgba(56, 223, 220, 0.13); --chart-accent: #38DFDC;
+  --chart-muted: #3B4869; --chart-axis: #6F7D9A; color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 19px; line-height: 1.65;
+  font-optical-sizing: auto; text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible { outline: 2px solid var(--accent-mark); outline-offset: 3px; border-radius: 2px; }
+.page {
+  max-width: 1120px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.col { max-width: 66ch; margin-inline: auto; }
+
+/* masthead */
+.masthead { border-bottom: 1px solid var(--rule); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-block: 14px; }
+.wordmark { font-family: var(--font-ui); font-size: 14px; letter-spacing: 0.02em; color: var(--ink); text-decoration: none; }
+.wordmark span { color: var(--accent); }
+.topnav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--font-ui); font-size: 13px; }
+.topnav a { color: var(--muted); text-decoration: none; }
+.topnav a:hover, .topnav a[aria-current="page"] { color: var(--ink); }
+.series { display: flex; gap: 2px; }
+.series a { display: inline-block; min-width: 2.2em; text-align: center; padding: 2px 4px; border-radius: 3px; }
+.series a[aria-current="page"] { background: var(--accent-tint); color: var(--ink); }
+
+/* hero */
+.hero { padding-block: clamp(40px, 8vw, 96px) 8px; }
+.kicker { font-family: var(--font-ui); font-size: 13px; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 22px; }
+.title {
+  font-family: var(--font-display); font-weight: 800; font-variation-settings: "opsz" 96;
+  font-size: clamp(2.5rem, 1.3rem + 4.6vw, 3.9rem); line-height: 0.98; letter-spacing: -0.025em;
+  margin: 0; text-wrap: balance;
+}
+.title span { display: block; }
+.title .second { color: var(--accent); }
+.title--article { font-size: clamp(2.2rem, 1.4rem + 3vw, 3.4rem); line-height: 1.02; }
+.dek { font-style: italic; font-size: clamp(1.15rem, 1rem + 0.5vw, 1.4rem); color: var(--muted); margin: 22px 0 0; max-width: 40ch; text-wrap: balance; }
+.tide { height: 26px; margin-top: 36px; overflow: hidden; }
+.tide svg { display: block; width: 200%; height: 26px; animation: tide 22s linear infinite; }
+.tide path { fill: none; stroke: var(--accent-mark); stroke-width: 1.4; }
+@keyframes tide { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .tide svg { animation: none; } }
+
+/* prose */
+main { padding-block: 28px 64px; }
+.prose p { margin: 0 0 1.05em; }
+.prose h3 { font-family: var(--font-display); font-weight: 650; font-size: 1.15rem; line-height: 1.3; margin: 2em 0 0.4em; text-wrap: balance; }
+.prose ol.steps { padding-left: 1.3em; margin: 0 0 1.2em; }
+.prose ol.steps li { margin-bottom: 0.6em; padding-left: 0.2em; }
+.prose strong { font-weight: 650; }
+.salutation { margin-top: 0.4em; }
+.closer { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; margin: 1.6em 0 1em; }
+.signature { margin: 1.4em 0 0; }
+.signature .name { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; display: block; }
+.signature .role { font-family: var(--font-ui); font-size: 13px; color: var(--muted); }
+.dedication { font-style: italic; color: var(--muted); margin-top: 2.6em; padding-top: 1.2em; border-top: 1px solid var(--rule); }
+
+/* list of articles */
+.toc { list-style: none; margin: 1.2em 0 1.8em; padding: 0; border-top: 1px solid var(--rule); }
+.toc li { border-bottom: 1px solid var(--rule); }
+.toc a { display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: 2px 8px; padding: 14px 4px; text-decoration: none; color: var(--ink); }
+.toc a:hover { background: var(--accent-tint); }
+.toc .num { grid-row: span 2; font-family: var(--font-ui); font-size: 13px; color: var(--accent); padding-top: 5px; }
+.toc .t { font-family: var(--font-display); font-weight: 700; font-size: 1.12rem; line-height: 1.3; }
+.toc .d { color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
+
+/* figures */
+.fig { margin-block: 2.2em 2em; margin-inline: calc(50% - min(410px, 50vw - 16px)); }
+.fig-title { font-family: var(--font-display); font-weight: 700; font-size: 1.08rem; line-height: 1.35; margin: 0 0 4px; text-wrap: balance; }
+.fig-sub { font-family: var(--font-ui); font-size: 12.5px; line-height: 1.5; color: var(--muted); margin: 0 0 12px; }
+.fig-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fig-scroll svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.fig-source { font-family: var(--font-ui); font-size: 12px; line-height: 1.55; color: var(--muted); margin: 10px 0 0; }
+.fig-source a { color: var(--muted); }
+.fig text { font-family: var(--font-ui); }
+.fig .n { font-family: var(--font-display); font-weight: 700; }
+.fig .q { font-family: var(--font-body); }
+.fig .t-ink { fill: var(--ink); }
+.fig .t-quiet { fill: var(--muted); }
+.fig .m-accent { fill: var(--chart-accent); }
+.fig .m-muted { fill: var(--chart-muted); }
+.fig .s-grid { stroke: var(--rule); fill: none; }
+.fig .s-axis { stroke: var(--chart-axis); fill: none; }
+.fig .s-accent { stroke: var(--chart-accent); fill: none; }
+.fig .box { fill: none; stroke: var(--chart-axis); stroke-width: 1.25; }
+.fig .obl { fill: var(--accent-tint); stroke: var(--chart-accent); stroke-width: 2; }
+.fig .hollow { fill: var(--paper); stroke: var(--chart-axis); stroke-width: 1.25; }
+.fig .ref { stroke: var(--chart-axis); stroke-dasharray: 4 4; fill: none; }
+
+/* pager and footer */
+.pager { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 3em; }
+.pager a { display: block; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 6px; text-decoration: none; color: var(--ink); }
+.pager a:hover { border-color: var(--accent-mark); }
+.pager .dir { display: block; font-family: var(--font-ui); font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.pager .pt { font-family: var(--font-display); font-weight: 700; font-size: 1.02rem; line-height: 1.3; }
+.pager .next { text-align: right; }
+.foot { border-top: 1px solid var(--rule); }
+.foot .col { padding-block: 26px 40px; font-family: var(--font-ui); font-size: 12.5px; color: var(--muted); }
+.foot p { margin: 0 0 6px; }
+.foot a { color: var(--muted); }
+@media (max-width: 520px) {
+  body { font-size: 18px; }
+  .pager .next { text-align: left; }
+}
+</style>
+</head>
+<body>
+<header class="masthead"><div class="page bar"><a class="wordmark" href="index.html">clhear<span>.org</span></a><nav class="topnav" aria-label="Site"><a href="index.html" aria-current="page">The letter</a><a href="index.html#articles">The six articles</a></nav></div></header><section class="hero"><div class="page"><div class="col"><p class="kicker">A letter from Avner Yoffe · October 2026</p><h1 class="title"><span>Don’t Panic.</span><span class="second">Regulation is Cool.</span></h1><p class="dek">A letter about what happens when AI reaches compliance</p><div class="tide" aria-hidden="true"><svg viewBox="0 0 2400 26" preserveAspectRatio="none"><path d="M0 13 Q 50 3 100 13 Q 150 23 200 13 Q 250 3 300 13 Q 350 23 400 13 Q 450 3 500 13 Q 550 23 600 13 Q 650 3 700 13 Q 750 23 800 13 Q 850 3 900 13 Q 950 23 1000 13 Q 1050 3 1100 13 Q 1150 23 1200 13 Q 1250 3 1300 13 Q 1350 23 1400 13 Q 1450 3 1500 13 Q 1550 23 1600 13 Q 1650 3 1700 13 Q 1750 23 1800 13 Q 1850 3 1900 13 Q 1950 23 2000 13 Q 2050 3 2100 13 Q 2150 23 2200 13 Q 2250 3 2300 13 Q 2350 23 2400 13"/></svg></div></div></div></section><main><div class="page"><article class="col prose">
+<p class="salutation">To whom it may concern,</p>
+<p>That’s probably you. If your work touches other people’s money, data, or health, compliance concerns you, whether you think about it or not.</p>
+<p>Compliance is how a company shows that it follows the rules: what it may promise, whom it may serve, what it has to check, and what it has to report. It’s the reason your bank asks for your ID, and the reason investment ads end in small print.</p>
+<p>It is also enormous. In 2023, a <a href="https://risk.lexisnexis.com/about-us/press-room/press-release/20230926-global-financial-crime-compliance-costs">LexisNexis study</a> put what financial institutions spend on financial crime compliance alone at $206.1 billion, and financial crime is only one chapter of the rulebook.</p>
+<p>A generation ago, a compliance program lived in binders. Today it lives in spreadsheets, shared drives, and the memory of the people who know why each control exists. When a rule changes, someone goes looking for everything it touches. When one of those people leaves, part of the program leaves with them.</p>
+<p>In ten years of building technology for compliance teams, I have seen that picture again and again.</p>
+<p>Meanwhile, the rest of the office is changing fast. Engineers write code with AI. Lawyers draft contracts with it. Compliance is still on the beach, checking the tide tables.</p>
+<p>I don’t think it stays there much longer. Within two or three years, I expect AI to do for compliance what the spreadsheet did for bookkeeping. Every so often a profession gets a shift like that. This one is compliance’s.</p>
+<p>The reason is that most compliance work is reading and writing. Someone reads a regulation and writes a policy. Someone reads the policy and writes a control. Someone reads the evidence and writes the report. Machines have only recently become good at that kind of work, and I don’t think many people outside the field have noticed what it means for this one.</p>
+<p>Picture a company a few years from now. A new rule is published in the morning, and by lunch the firm knows which of its products it touches, which policies need a new line, and who has to sign off. A regulator asks a question that used to start a project, and the answer arrives with its evidence before the call is over. The company decides to launch in another country, and compliance is no longer the reason the launch slips.</p>
+<p>Underneath all of it is one shared language. Every rule, policy, and control is described the same way, so the firm, its regulator, its auditors, and its software can finally read the same page. Global trade sped up once the world agreed on the size of a shipping container. Compliance needs its container.</p>
+<p>This matters well beyond compliance departments. Trust is what lets a stranger hand you their savings. Today, proving that you deserve it is slow and expensive, which favors whoever can afford the biggest teams. When it becomes fast and cheap, smaller firms can compete, good products reach people sooner, and the people the rules were written to protect are better protected. The first companies to get there will expand at what will look, from today, like lightspeed.</p>
+<p>That is what I started <a href="https://reg42.com">Reg42</a> to build. We are writing CLHEAR, an open standard that describes any compliance program in one common language, and building the system that runs a program on top of it. It maps what the rules require, compares that with what a company actually does, and helps close the gaps, with machines doing the work and people signing off. The standard is open because a language only one company can read isn’t much of a language.</p>
+<p>I could be wrong about the timing. Regulators will want proof before they trust any of this, and they should. A new standard has to earn its credibility, one user at a time. But I have watched this field long enough to be fairly sure of the direction.</p>
+<p>For readers who want the evidence, I’ve written six shorter pieces. Each one stands on its own.</p>
+<ol class="toc" id="articles"><li><a href="from-tasks-to-the-map.html"><span class="num">I</span><span class="t">From Tasks to the Map</span><span class="d">Why this wave is different from the compliance technology that came before</span></a></li><li><a href="the-wall.html"><span class="num">II</span><span class="t">The Wall</span><span class="d">Why hiring more people no longer keeps up with the rules</span></a></li><li><a href="one-common-language.html"><span class="num">III</span><span class="t">One Common Language</span><span class="d">Three rulebooks, one set of duties, compared line by line</span></a></li><li><a href="proof-before-autonomy.html"><span class="num">IV</span><span class="t">Proof Before Autonomy</span><span class="d">What it will take for anyone to trust automated compliance</span></a></li><li><a href="what-we-are-building.html"><span class="num">V</span><span class="t">What We Are Building</span><span class="d">Reg42, and where we are starting</span></a></li><li><a href="what-could-prove-me-wrong.html"><span class="num">VI</span><span class="t">What Could Prove Me Wrong</span><span class="d">The risks, and the signs I’m watching for</span></a></li></ol>
+<p>If you run compliance, I’d like to map your program with you. If you’ve spent a career at a regulator, help us make the standard worth trusting. If you build software, the hardest parts are still unbuilt. And if you invest in what comes next, you know where to find me.</p>
+<p>About the title. Don’t panic, because this wave is good news. And regulation is cool, because rules are how a society writes down what it expects of the people it trusts. Getting them right at scale is one of the most interesting problems I know.</p>
+<p class="closer">Don’t panic. The answer is 42.</p>
+<p class="signature"><span class="name">Avner Yoffe</span><span class="role">Founder, Reg42 · Tel Aviv, October 2026</span></p>
+<p class="dedication">For everyone who signs their name under a compliance program.</p>
+</article></div></main><footer class="foot"><div class="page"><div class="col"><p>Don’t Panic. Regulation is Cool. A letter and six articles by Avner Yoffe, published at clhear.org.</p><p><a href="https://reg42.com">reg42.com</a> · <a href="https://github.com/Reg42-ai/clhear">CLHEAR on GitHub</a></p></div></div></footer>
+</body>
+</html>

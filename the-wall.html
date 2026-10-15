@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Wall · Don’t Panic. Regulation is Cool.</title>
+<meta name="description" content="Why hiring more people no longer keeps up with the rules.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta property="og:title" content="The Wall · Don’t Panic. Regulation is Cool.">
+<meta property="og:description" content="Why hiring more people no longer keeps up with the rules.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://clhear.org/the-wall.html">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B1124'/%3E%3Cpath d='M4 18 Q 9 10 14 18 T 24 18 T 34 18' fill='none' stroke='%2338DFDC' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400..600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column for one long argument; a quiet rail of part numbers on wide screens; the tide line is the only thing that moves. */
+:root {
+  --paper: #F4F7F8;
+  --surface: #E9EFF1;
+  --ink: #0E1630;
+  --muted: #56627A;
+  --rule: #D3DBE2;
+  --accent: #0A7A77;
+  --accent-mark: #17AFAC;
+  --accent-tint: rgba(23, 175, 172, 0.12);
+  --chart-accent: #159C99;
+  --chart-muted: #C2CBD5;
+  --chart-axis: #8893A6;
+  --font-display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-ui: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0B1124; --surface: #111A35; --ink: #E7ECF5; --muted: #9AA6BD;
+    --rule: #233052; --accent: #38DFDC; --accent-mark: #38DFDC;
+    --accent-tint: rgba(56, 223, 220, 0.13); --chart-accent: #38DFDC;
+    --chart-muted: #3B4869; --chart-axis: #6F7D9A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0B1124; --surface: #111A35; --ink: #E7ECF5; --muted: #9AA6BD;
+  --rule: #233052; --accent: #38DFDC; --accent-mark: #38DFDC;
+  --accent-tint: rgba(56, 223, 220, 0.13); --chart-accent: #38DFDC;
+  --chart-muted: #3B4869; --chart-axis: #6F7D9A; color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 19px; line-height: 1.65;
+  font-optical-sizing: auto; text-rendering: optimizeLegibility;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible { outline: 2px solid var(--accent-mark); outline-offset: 3px; border-radius: 2px; }
+.page {
+  max-width: 1120px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.col { max-width: 66ch; margin-inline: auto; }
+
+/* masthead */
+.masthead { border-bottom: 1px solid var(--rule); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding-block: 14px; }
+.wordmark { font-family: var(--font-ui); font-size: 14px; letter-spacing: 0.02em; color: var(--ink); text-decoration: none; }
+.wordmark span { color: var(--accent); }
+.topnav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--font-ui); font-size: 13px; }
+.topnav a { color: var(--muted); text-decoration: none; }
+.topnav a:hover, .topnav a[aria-current="page"] { color: var(--ink); }
+.series { display: flex; gap: 2px; }
+.series a { display: inline-block; min-width: 2.2em; text-align: center; padding: 2px 4px; border-radius: 3px; }
+.series a[aria-current="page"] { background: var(--accent-tint); color: var(--ink); }
+
+/* hero */
+.hero { padding-block: clamp(40px, 8vw, 96px) 8px; }
+.kicker { font-family: var(--font-ui); font-size: 13px; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 22px; }
+.title {
+  font-family: var(--font-display); font-weight: 800; font-variation-settings: "opsz" 96;
+  font-size: clamp(2.5rem, 1.3rem + 4.6vw, 3.9rem); line-height: 0.98; letter-spacing: -0.025em;
+  margin: 0; text-wrap: balance;
+}
+.title span { display: block; }
+.title .second { color: var(--accent); }
+.title--article { font-size: clamp(2.2rem, 1.4rem + 3vw, 3.4rem); line-height: 1.02; }
+.dek { font-style: italic; font-size: clamp(1.15rem, 1rem + 0.5vw, 1.4rem); color: var(--muted); margin: 22px 0 0; max-width: 40ch; text-wrap: balance; }
+.tide { height: 26px; margin-top: 36px; overflow: hidden; }
+.tide svg { display: block; width: 200%; height: 26px; animation: tide 22s linear infinite; }
+.tide path { fill: none; stroke: var(--accent-mark); stroke-width: 1.4; }
+@keyframes tide { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .tide svg { animation: none; } }
+
+/* prose */
+main { padding-block: 28px 64px; }
+.prose p { margin: 0 0 1.05em; }
+.prose h3 { font-family: var(--font-display); font-weight: 650; font-size: 1.15rem; line-height: 1.3; margin: 2em 0 0.4em; text-wrap: balance; }
+.prose ol.steps { padding-left: 1.3em; margin: 0 0 1.2em; }
+.prose ol.steps li { margin-bottom: 0.6em; padding-left: 0.2em; }
+.prose strong { font-weight: 650; }
+.salutation { margin-top: 0.4em; }
+.closer { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; margin: 1.6em 0 1em; }
+.signature { margin: 1.4em 0 0; }
+.signature .name { font-family: var(--font-display); font-weight: 700; font-size: 1.15rem; display: block; }
+.signature .role { font-family: var(--font-ui); font-size: 13px; color: var(--muted); }
+.dedication { font-style: italic; color: var(--muted); margin-top: 2.6em; padding-top: 1.2em; border-top: 1px solid var(--rule); }
+
+/* list of articles */
+.toc { list-style: none; margin: 1.2em 0 1.8em; padding: 0; border-top: 1px solid var(--rule); }
+.toc li { border-bottom: 1px solid var(--rule); }
+.toc a { display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: 2px 8px; padding: 14px 4px; text-decoration: none; color: var(--ink); }
+.toc a:hover { background: var(--accent-tint); }
+.toc .num { grid-row: span 2; font-family: var(--font-ui); font-size: 13px; color: var(--accent); padding-top: 5px; }
+.toc .t { font-family: var(--font-display); font-weight: 700; font-size: 1.12rem; line-height: 1.3; }
+.toc .d { color: var(--muted); font-size: 0.95rem; line-height: 1.5; }
+
+/* figures */
+.fig { margin-block: 2.2em 2em; margin-inline: calc(50% - min(410px, 50vw - 16px)); }
+.fig-title { font-family: var(--font-display); font-weight: 700; font-size: 1.08rem; line-height: 1.35; margin: 0 0 4px; text-wrap: balance; }
+.fig-sub { font-family: var(--font-ui); font-size: 12.5px; line-height: 1.5; color: var(--muted); margin: 0 0 12px; }
+.fig-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fig-scroll svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.fig-source { font-family: var(--font-ui); font-size: 12px; line-height: 1.55; color: var(--muted); margin: 10px 0 0; }
+.fig-source a { color: var(--muted); }
+.fig text { font-family: var(--font-ui); }
+.fig .n { font-family: var(--font-display); font-weight: 700; }
+.fig .q { font-family: var(--font-body); }
+.fig .t-ink { fill: var(--ink); }
+.fig .t-quiet { fill: var(--muted); }
+.fig .m-accent { fill: var(--chart-accent); }
+.fig .m-muted { fill: var(--chart-muted); }
+.fig .s-grid { stroke: var(--rule); fill: none; }
+.fig .s-axis { stroke: var(--chart-axis); fill: none; }
+.fig .s-accent { stroke: var(--chart-accent); fill: none; }
+.fig .box { fill: none; stroke: var(--chart-axis); stroke-width: 1.25; }
+.fig .obl { fill: var(--accent-tint); stroke: var(--chart-accent); stroke-width: 2; }
+.fig .hollow { fill: var(--paper); stroke: var(--chart-axis); stroke-width: 1.25; }
+.fig .ref { stroke: var(--chart-axis); stroke-dasharray: 4 4; fill: none; }
+
+/* pager and footer */
+.pager { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 3em; }
+.pager a { display: block; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 6px; text-decoration: none; color: var(--ink); }
+.pager a:hover { border-color: var(--accent-mark); }
+.pager .dir { display: block; font-family: var(--font-ui); font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.pager .pt { font-family: var(--font-display); font-weight: 700; font-size: 1.02rem; line-height: 1.3; }
+.pager .next { text-align: right; }
+.foot { border-top: 1px solid var(--rule); }
+.foot .col { padding-block: 26px 40px; font-family: var(--font-ui); font-size: 12.5px; color: var(--muted); }
+.foot p { margin: 0 0 6px; }
+.foot a { color: var(--muted); }
+@media (max-width: 520px) {
+  body { font-size: 18px; }
+  .pager .next { text-align: left; }
+}
+</style>
+</head>
+<body>
+<header class="masthead"><div class="page bar"><a class="wordmark" href="index.html">clhear<span>.org</span></a><nav class="topnav" aria-label="Site"><a href="index.html">The letter</a><span class="series"><a href="from-tasks-to-the-map.html" title="From Tasks to the Map">I</a><a href="the-wall.html" aria-current="page" title="The Wall">II</a><a href="one-common-language.html" title="One Common Language">III</a><a href="proof-before-autonomy.html" title="Proof Before Autonomy">IV</a><a href="what-we-are-building.html" title="What We Are Building">V</a><a href="what-could-prove-me-wrong.html" title="What Could Prove Me Wrong">VI</a></span></nav></div></header><section class="hero"><div class="page"><div class="col"><p class="kicker">Part II of six · Avner Yoffe · 15 October 2026</p><h1 class="title title--article">The Wall</h1><p class="dek">Why hiring more people no longer keeps up with the rules</p></div></div></section><main><div class="page"><article class="col prose">
+<p>Finance runs on a general ledger. Sales runs on a CRM. To my knowledge, compliance is the one critical function at large financial institutions that still has no leading single source of truth.</p>
+<p>Without one, a program lives in pieces. Policies, roles, committees, systems, and evidence each sit in their own place, in their own vocabulary. The connections between them have to be held by people.</p>
+<p>I have owned that kind of stack. I came to believe the risk sits less in any one application than in the spaces between them.</p>
+<p>I also believe adding a jurisdiction should not make a compliance program much more complex than covering one. Without a common language, it does.</p>
+<p>Now add AI. Firms are putting models into marketing, client communications, trading, and operations. Those models bring obligations of their own, and accountability for what they do stays with the firm.</p>
+<figure class="fig"><p class="fig-title">US states passed 150 AI-related laws in 2025, up from 1 in 2016</p><p class="fig-sub">AI-related laws passed by all US states, and AI-related federal regulations, per year</p><div class="fig-scroll"><svg viewBox="0 0 760 276" role="img" aria-label="US states passed 150 AI-related laws in 2025, up from 1 in 2016; federal AI-related regulations reached 58"><rect x="48" y="9" width="10" height="10" rx="2" class="m-accent"/><text x="64" y="18" font-size="12" class="t-ink">US state AI laws passed</text><rect x="268" y="9" width="10" height="10" rx="2" class="m-muted"/><text x="284" y="18" font-size="12" class="t-ink">US federal AI regulations</text><line x1="48" x2="748" y1="246" y2="246" class="s-axis"/><text x="40" y="250" text-anchor="end" font-size="11.5" class="t-quiet">0</text><line x1="48" x2="748" y1="179.3" y2="179.3" class="s-grid"/><text x="40" y="183.3" text-anchor="end" font-size="11.5" class="t-quiet">50</text><line x1="48" x2="748" y1="112.7" y2="112.7" class="s-grid"/><text x="40" y="116.7" text-anchor="end" font-size="11.5" class="t-quiet">100</text><line x1="48" x2="748" y1="46" y2="46" class="s-grid"/><text x="40" y="50" text-anchor="end" font-size="11.5" class="t-quiet">150</text><text x="83" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2016</text><text x="153" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2017</text><text x="223" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2018</text><text x="293" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2019</text><text x="363" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2020</text><text x="433" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2021</text><text x="503" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2022</text><text x="573" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2023</text><text x="643" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2024</text><text x="713" y="265" text-anchor="middle" font-size="11.5" class="t-quiet">2025</text><rect x="60" y="244.7" width="22" height="1.3" rx="2" class="m-accent"><title>US state AI laws passed, 2016: 1</title></rect><rect x="130" y="244.7" width="22" height="1.3" rx="2" class="m-accent"><title>US state AI laws passed, 2017: 1</title></rect><rect x="200" y="234" width="22" height="12" rx="2" class="m-accent"><title>US state AI laws passed, 2018: 9</title></rect><rect x="270" y="226" width="22" height="20" rx="2" class="m-accent"><title>US state AI laws passed, 2019: 15</title></rect><rect x="340" y="234" width="22" height="12" rx="2" class="m-accent"><title>US state AI laws passed, 2020: 9</title></rect><rect x="410" y="215.3" width="22" height="30.7" rx="2" class="m-accent"><title>US state AI laws passed, 2021: 23</title></rect><rect x="480" y="210" width="22" height="36" rx="2" class="m-accent"><title>US state AI laws passed, 2022: 27</title></rect><rect x="550" y="180.7" width="22" height="65.3" rx="2" class="m-accent"><title>US state AI laws passed, 2023: 49</title></rect><rect x="620" y="70" width="22" height="176" rx="2" class="m-accent"><title>US state AI laws passed, 2024: 132</title></rect><rect x="690" y="46" width="22" height="200" rx="2" class="m-accent"><title>US state AI laws passed, 2025: 150</title></rect><rect x="84" y="244.7" width="22" height="1.3" rx="2" class="m-muted"><title>US federal AI regulations, 2016: 1</title></rect><rect x="224" y="242" width="22" height="4" rx="2" class="m-muted"><title>US federal AI regulations, 2018: 3</title></rect><rect x="294" y="232.7" width="22" height="13.3" rx="2" class="m-muted"><title>US federal AI regulations, 2019: 10</title></rect><rect x="364" y="224.7" width="22" height="21.3" rx="2" class="m-muted"><title>US federal AI regulations, 2020: 16</title></rect><rect x="434" y="230" width="22" height="16" rx="2" class="m-muted"><title>US federal AI regulations, 2021: 12</title></rect><rect x="504" y="224.7" width="22" height="21.3" rx="2" class="m-muted"><title>US federal AI regulations, 2022: 16</title></rect><rect x="574" y="212.7" width="22" height="33.3" rx="2" class="m-muted"><title>US federal AI regulations, 2023: 25</title></rect><rect x="644" y="167.3" width="22" height="78.7" rx="2" class="m-muted"><title>US federal AI regulations, 2024: 59</title></rect><rect x="714" y="168.7" width="22" height="77.3" rx="2" class="m-muted"><title>US federal AI regulations, 2025: 58</title></rect><text x="701" y="39" text-anchor="middle" font-size="13" font-weight="600" class="t-ink">150</text><text x="725" y="161.7" text-anchor="middle" font-size="12" class="t-ink">58</text><text x="71" y="237.7" text-anchor="middle" font-size="12" class="t-ink">1</text></svg></div><figcaption class="fig-source">Source: Stanford HAI, <a href="https://hai.stanford.edu/ai-index/2026-ai-index-report">AI Index Report 2026</a>, <a href="https://hai.stanford.edu/assets/files/ai_index_report_2026_chapter_8_policy_and_governance.pdf">chapter 8</a>, figures 8.4.1, 8.4.4 and 8.4.10, from the report’s <a href="https://drive.google.com/drive/folders/1zJTOg0iR0j5SijCwFutwWvDt143lW277">public data</a>. The federal series counts agency rules and executive orders; its source data has no 2017 row.</figcaption></figure>
+<p>For a firm that operates nationwide, each of those state laws is another text to check for applicability. Across the G20, national AI laws arrive at a steadier pace: between 11 and 16 a year since 2020.</p>
+<p>That is the wall. More rules, more applications, more AI, and no shared map. I don’t believe more headcount gets a firm over it. A common language can.</p>
+<nav class="pager" aria-label="More articles"><a href="from-tasks-to-the-map.html"><span class="dir">Previous · I</span><span class="pt">From Tasks to the Map</span></a><a class="next" href="one-common-language.html"><span class="dir">Next · III</span><span class="pt">One Common Language</span></a></nav></article></div></main><footer class="foot"><div class="page"><div class="col"><p>Don’t Panic. Regulation is Cool. A letter and six articles by Avner Yoffe, published at clhear.org.</p><p><a href="https://reg42.com">reg42.com</a> · <a href="https://github.com/Reg42-ai/clhear">CLHEAR on GitHub</a></p></div></div></footer>
+</body>
+</html>
