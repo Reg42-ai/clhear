@@ -8,15 +8,17 @@ The engine ships no snapshot and no recipe. Each publisher brings its own texts,
 
 | File | What it is |
 | --- | --- |
-| `manifest.json` | Format, title, licence, notice; the release, scope and engine version; the models the run used; each layer's revision and counts; the profiles; the sources; the SHA-256 of every other file and one `content_hash` over them |
+| `manifest.json` | Format, title, licence, notice; the release, scope and engine version; the models the run used; each layer's revision and counts; the profiles; the sources; the warnings; the SHA-256 of every other file and one `content_hash` over them and the manifest's own fields |
 | `blueprints/<profile>.json` | Each profile's reference blueprint, exactly as `GET /v1/releases/{release_id}/blueprints/{profile_id}` returns it, with the `profile_attributes` it was composed for |
 | `applicability.json` | Every obligation in scope, the applicability conditions that decide whether it applies (jurisdiction, role, condition, each with the words it came from), and its verdict for each profile: `applies`, `not_applicable` or `undetermined` |
 | `questions.json` | The questions the texts in scope raise, with their quotes: what a profile answers |
 | `sources.json` | Each source in scope: kind, whether it binds, publisher, reference, where it was read from, and the version and SHA-256 of the text that was read |
+| `risk.json` | Layer 7 as the run left it: each penalty a binding text in scope states (type, maximum, the clause words quoted with offsets, the obligations it refers to), and each obligation's risk score with its dimensions under the published method |
+| `practices.json` | Layer 8 as the run left it: each practice read from a text in scope that does not bind, quoted, with the component it concerns |
 | `recipe.json` | The sources, the scope and the profiles, to run the scope again |
 | `README.md` | The same for people, with anything to read before use |
 
-A snapshot holds no organisation's data. The texts themselves are not in it; each element quotes the clause words it rests on, with offsets.
+A snapshot holds no organisation's data. The texts themselves are not in it; each element quotes the clause words it rests on, with offsets. A release made before Layers 7 and 8 were captured has no `risk.json` or `practices.json`.
 
 ## Make one
 
@@ -52,7 +54,9 @@ A snapshot holds no organisation's data. The texts themselves are not in it; eac
 clhear snapshot verify ai-reference-2026-10.zip
 ```
 
-The check passes when each file the manifest lists is present with its SHA-256, no other file is there, and the `content_hash` matches. Publish the `content_hash` next to the download, so anyone can compare.
+The check passes when each file the manifest lists is present with its SHA-256, no other file is there, and the `content_hash` matches. The `content_hash` covers the files and the manifest's own fields (title, licence, notice, release, profiles, sources), except when the files were written. Publish the `content_hash` next to the download, so anyone can compare. Whoever changes a file can also rewrite the hashes inside the snapshot, so compare against the published value.
+
+Over HTTP, `POST /v1/releases/{release_id}/snapshot` returns the `.zip` (body: `licence`, and optionally `title`, `notice`, `profiles`) with its content hash in `X-Content-Hash`. `POST /v1/snapshots/verify` takes `{"snapshot": "<the .zip, base64>"}`; `POST /v1/snapshots/match` takes the same with `attributes`. Neither stores anything.
 
 ## Match a profile against it
 

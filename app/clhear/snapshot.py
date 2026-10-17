@@ -16,6 +16,11 @@ A snapshot holds, for one release of one scope:
   roles, conditions): what a profile answers;
 * ``sources.json``: each source in scope with its version and the hash of the
   text that was read;
+* ``risk.json``: Layer 7 of the run: the penalties the binding texts state, with
+  their quotes and the obligations they refer to, and each obligation's risk score
+  under the published method;
+* ``practices.json``: Layer 8 of the run: the practices read from the texts in scope
+  that do not bind, each quoted, with the component it concerns;
 * ``recipe.json``: the sources, the scope and the profiles, to run the scope
   again (``clhear recipe apply``);
 * ``README.md``: the same for people.
@@ -39,8 +44,10 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Engine
 
 FORMAT = "clhear-blueprint-snapshot/1"
-PAYLOAD = ("applicability.json", "questions.json", "sources.json")
 NOT_FOR_PUBLICATION = "not-for-publication"
+# What a .zip may hold before it is read: a snapshot has a few files per profile.
+MAX_FILES = 10_000
+MAX_UNPACKED_BYTES = 500 * 1024 * 1024
 _ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
@@ -61,7 +68,8 @@ def last_call_id(engine: Engine) -> int:
 
 def capture(engine: Engine, source_keys, *, calls_after: int = 0) -> dict:
     """What a snapshot of this run needs beyond its compositions: the conditions of every
-    obligation in scope, the questions the texts raise, the sources as read, the models used."""
+    obligation in scope, the questions the texts raise, the sources as read, the models used,
+    and Layers 7 and 8 as the run left them (a later run rewrites those tables)."""
     from app.clhear.l4.predicates import LIVE_STATUS, canonical_in, edges_by_obligation, questions
     from app.clhear.derived_models import obligations
     from app.clhear.models import llm_calls
@@ -90,7 +98,48 @@ def capture(engine: Engine, source_keys, *, calls_after: int = 0) -> dict:
                                         .group_by(llm_calls.c.provider, llm_calls.c.model)
                                         .order_by(llm_calls.c.provider, llm_calls.c.model))]
         versions = _source_versions(conn, keys)
-    return {"applicability": applicability, "questions": _plain(asked), "source_versions": versions, "models": models}
+        risk = _risk(conn, keys, {ob["obligation_id"] for ob in applicability})
+        practices = _practices(conn)
+    return {"applicability": applicability, "questions": _plain(asked), "source_versions": versions, "models": models,
+            "risk": risk, "practices": practices}
+
+
+def _risk(conn, keys: list[str], obligation_ids: set[str]) -> dict:
+    """Layer 7: each penalty a binding text in scope states, quoted, with the obligations it
+    refers to; and each obligation's current risk score, with the method that made it."""
+    from app.clhear.l7 import models as l7
+
+    links: dict[str, list[dict]] = {}
+    for r in conn.execute(sa.select(l7.penalty_links).where(l7.penalty_links.c.valid_to.is_(None))).mappings():
+        if r["obligation_id"] in obligation_ids:
+            links.setdefault(r["penalty_id"], []).append(
+                {"obligation_id": r["obligation_id"], "method": r["method"], "via": _plain(r["via"])})
+    penalties = []
+    for r in conn.execute(sa.select(l7.stated_penalties).where(
+            l7.stated_penalties.c.source_key.in_(keys), l7.stated_penalties.c.valid_to.is_(None))
+            .order_by(l7.stated_penalties.c.source_key, l7.stated_penalties.c.clause_ref, l7.stated_penalties.c.id)).mappings():
+        penalties.append({"penalty_id": r["id"], "source_key": r["source_key"], "clause_ref": r["clause_ref"],
+                          "penalty_type": r["penalty_type"], "maximum": r["maximum"], "amount": r["amount"],
+                          "unit": r["unit"], "evidence": _plain(r["evidence"]),
+                          "obligations": sorted(links.get(r["id"], []), key=lambda x: (x["obligation_id"], x["method"]))})
+    scores = []
+    for r in conn.execute(sa.select(l7.risk_scores).where(
+            l7.risk_scores.c.subject_kind == "obligation", l7.risk_scores.c.status == "current")
+            .order_by(l7.risk_scores.c.subject_ref)).mappings():
+        if r["subject_ref"] in obligation_ids:
+            scores.append({"obligation_id": r["subject_ref"], "composite": r["composite"], "band": r["band"],
+                           "dimensions": _plain(r["dimensions"]), "method_version": r["method_version"],
+                           "calibration": r["calibration_set_ref"], "evidence": _plain(r["evidence"])})
+    method = l7.method()
+    return {"method": {k: method[k] for k in ("method_version", "weights", "dimensions", "composite", "bands")},
+            "penalties": penalties, "scores": scores}
+
+
+def _practices(conn) -> list[dict]:
+    """Layer 8: the practices read from the texts in scope that do not bind, each quoted."""
+    from app.clhear.l8.reference import derived_reference_rows
+
+    return sorted(_plain(derived_reference_rows(conn)), key=lambda r: r["id"])
 
 
 def _source_versions(conn, keys: list[str]) -> list[dict]:
@@ -165,9 +214,18 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def content_hash(files: dict[str, str]) -> str:
-    """One hash for the payload: the sorted file names with their hashes."""
-    return _sha("".join(f"{name} {digest}\n" for name, digest in sorted(files.items())).encode("utf-8"))
+# Fields of the manifest its content hash does not cover: the hashes themselves, and when
+# the files were written (the same release with the same options gives the same hash).
+_UNHASHED = ("files", "content_hash", "created_at")
+
+
+def content_hash(files: dict[str, str], manifest: dict | None = None) -> str:
+    """One hash for the snapshot: the sorted file names with their hashes, and the manifest's
+    own fields (title, licence, notice, release, profiles, sources ...)."""
+    lines = "".join(f"{name} {digest}\n" for name, digest in sorted(files.items()))
+    if manifest is not None:
+        lines += "manifest.json " + _sha(_dump({k: v for k, v in manifest.items() if k not in _UNHASHED})) + "\n"
+    return _sha(lines.encode("utf-8"))
 
 
 def _restricted(sources: list[dict]) -> list[str]:
@@ -244,6 +302,13 @@ def create(engine: Engine, release_id: str, out_dir: str | Path, *, licence: str
     files["applicability.json"] = _dump({"release": release_id, "obligations": obligations})
     files["questions.json"] = _dump(basis.get("questions") or {})
     files["sources.json"] = _dump({"release": release_id, "sources": sources})
+    # Releases made before Layers 7 and 8 were captured have neither file.
+    if basis.get("risk") is not None:
+        files["risk.json"] = _dump({"release": release_id, **basis["risk"]})
+    if basis.get("practices") is not None:
+        from app.clhear.l8.reference import LABEL
+
+        files["practices.json"] = _dump({"release": release_id, "label": LABEL, "practices": basis["practices"]})
     from app.clhear import recipe
 
     files["recipe.json"] = _dump(recipe.build(row["scope"], sources, listed))
@@ -264,10 +329,11 @@ def create(engine: Engine, release_id: str, out_dir: str | Path, *, licence: str
                                            "reference", "licence", "rights_basis", "url", "version")} for s in sources],
         "restricted_sources": restricted,
     }
-    readme = _readme(manifest, warnings).encode("utf-8")
+    readme = _readme(manifest, warnings, basis).encode("utf-8")
     files["README.md"] = readme
+    manifest["warnings"] = warnings
     manifest["files"] = {name: _sha(data) for name, data in sorted(files.items())}
-    manifest["content_hash"] = content_hash(manifest["files"])
+    manifest["content_hash"] = content_hash(manifest["files"], manifest)
 
     out = Path(out_dir)
     if out.exists() and any(out.iterdir()):
@@ -302,7 +368,7 @@ def _zip(files: dict[str, bytes], *, root: str) -> bytes:
     return buffer.getvalue()
 
 
-def _readme(manifest: dict, warnings: list[str]) -> str:
+def _readme(manifest: dict, warnings: list[str], basis: dict | None = None) -> str:
     lines = [f"# {manifest['title']}", ""]
     lines += [f"Reference blueprints composed by the CLHEAR engine {manifest['engine_version']} in release "
               f"`{manifest['release']['id']}` of the scope `{manifest['scope']['name']}`.", ""]
@@ -322,6 +388,16 @@ def _readme(manifest: dict, warnings: list[str]) -> str:
         lines.append(f"- {s['name']} (`{s['source_key']}`, {s.get('kind') or 'kind not set'}, {binds}"
                      + (f", {s['jurisdiction']}" if s.get("jurisdiction") else "") + ")"
                      + (f": version {version.get('label')}, SHA-256 `{version.get('sha256')}`" if version else ": not read"))
+    risk = (basis or {}).get("risk")
+    practices = (basis or {}).get("practices")
+    if risk is not None or practices is not None:
+        lines += ["", "## Layers 7 and 8", ""]
+    if risk is not None:
+        lines.append(f"- `risk.json`: {len(risk.get('penalties') or [])} penalties the binding texts state, quoted, and "
+                     f"{len(risk.get('scores') or [])} obligation risk scores under method "
+                     f"`{(risk.get('method') or {}).get('method_version')}`.")
+    if practices is not None:
+        lines.append(f"- `practices.json`: {len(practices)} practices read from the texts in scope that do not bind, quoted.")
     if manifest.get("models"):
         lines += ["", "## Models used by the run", ""]
         lines += [f"- {m['provider']} `{m['model']}`: {m['calls']} calls" for m in manifest["models"]]
@@ -356,7 +432,11 @@ def load(path: str | Path) -> dict:
                 files[item.relative_to(location).as_posix()] = item.read_bytes()
     elif location.is_file() and zipfile.is_zipfile(location):
         with zipfile.ZipFile(location) as archive:
-            names = [n for n in archive.namelist() if not n.endswith("/")]
+            entries = [i for i in archive.infolist() if not i.is_dir()]
+            if len(entries) > MAX_FILES or sum(i.file_size for i in entries) > MAX_UNPACKED_BYTES:
+                raise SnapshotError(f"{location.name} holds more than a snapshot can: at most {MAX_FILES} files "
+                                    f"and {MAX_UNPACKED_BYTES} bytes unpacked")
+            names = [i.filename for i in entries]
             roots = {n.split("/", 1)[0] for n in names}
             strip = len(next(iter(roots))) + 1 if len(roots) == 1 and all("/" in n for n in names) else 0
             for name in names:
@@ -365,9 +445,13 @@ def load(path: str | Path) -> dict:
         raise SnapshotError(f"{location} is not a snapshot folder or .zip")
     if "manifest.json" not in files:
         raise SnapshotError("no manifest.json: this is not a snapshot")
-    manifest = json.loads(files["manifest.json"])
-    if manifest.get("format") != FORMAT:
-        raise SnapshotError(f"unknown snapshot format {manifest.get('format')!r}; this engine reads {FORMAT}")
+    try:
+        manifest = json.loads(files["manifest.json"])
+    except ValueError as exc:
+        raise SnapshotError("manifest.json is not JSON") from exc
+    found = manifest.get("format") if isinstance(manifest, dict) else None
+    if found != FORMAT:
+        raise SnapshotError(f"unknown snapshot format {found!r}; this engine reads {FORMAT}")
     return {"manifest": manifest, "files": files}
 
 
@@ -384,8 +468,8 @@ def verify(path: str | Path) -> dict:
             problems.append(f"changed: {name}")
     for name in sorted(set(files) - set(listed) - {"manifest.json"}):
         problems.append(f"not listed: {name}")
-    if content_hash(listed) != manifest.get("content_hash"):
-        problems.append("the content hash does not match the listed files")
+    if content_hash(listed, manifest) != manifest.get("content_hash"):
+        problems.append("the content hash does not match the listed files and the manifest")
     return {"valid": not problems, "problems": problems, "title": manifest.get("title"),
             "release": (manifest.get("release") or {}).get("id"), "content_hash": manifest.get("content_hash"),
             "licence": manifest.get("licence")}
@@ -403,6 +487,8 @@ def match(path: str | Path, attributes: dict) -> dict:
         raise SnapshotError("the profile cannot be read: " + "; ".join(e["message"] for e in shape["errors"]))
     snap = load(path)
     manifest = snap["manifest"]
+    if "applicability.json" not in snap["files"]:
+        raise SnapshotError("the snapshot has no applicability.json, so no profile can be matched")
     obligations = json.loads(snap["files"]["applicability.json"])["obligations"]
     yours = verdicts(obligations, shape["normalized"])
     results = []

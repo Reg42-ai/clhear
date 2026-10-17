@@ -316,6 +316,8 @@ The full contract is [openapi/clhear-v1.yaml](openapi/clhear-v1.yaml).
 | `GET /v1/releases/{release_id}` | A stored release, with per-layer counts, model calls, failed sources and the lineage check |
 | `GET /v1/releases/{release_id}/blueprints/{profile_id}` | One blueprint in a release |
 | `GET /v1/blueprints/{blueprint_id}`, `GET /v1/blueprints/{blueprint_id}/diff?against=…` | A blueprint by id, and the difference between two |
+| `POST /v1/releases/{release_id}/snapshot` | A release's reference blueprints as a snapshot `.zip` (licence required); stores nothing |
+| `POST /v1/snapshots/verify`, `POST /v1/snapshots/match` | Check a snapshot, or match a profile against it (the `.zip` base64-encoded); reads the files only |
 | `GET/POST /v1/webhooks`, `DELETE /v1/webhooks/{webhook_id}` | Manage notifications |
 | `POST /v1/contributions/validate` | Check a contribution proposal (no network calls) |
 

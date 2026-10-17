@@ -3,8 +3,9 @@
 """Host HTTP API. A run is inserted here and executed by the worker."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.clhear.contribution import ContributionProposal, ProposalRejected, parse_proposal
@@ -57,6 +58,27 @@ class WebhookBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str
     secret: str
+
+
+class SnapshotBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    licence: str = Field(description="The licence the snapshot is published under, or 'not-for-publication'")
+    title: str = ""
+    notice: str = ""
+    profiles: list[str] = Field(default_factory=list, description="Some of the release's profiles; empty means all")
+
+
+class SnapshotFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    snapshot: str = Field(description="The snapshot .zip, base64-encoded")
+
+
+class SnapshotMatchBody(SnapshotFile):
+    attributes: dict = Field(description="The organisation profile to match: jurisdictions, roles, conditions, licences")
+
+
+# A snapshot quotes clauses and lists obligations; it is small next to the texts it reads.
+MAX_SNAPSHOT_BYTES = 25 * 1024 * 1024
 
 
 def _engine():
@@ -372,6 +394,56 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="webhook not found")
         return {"deleted": webhook_id}
 
+    @application.post(
+        "/v1/releases/{release_id}/snapshot",
+        response_class=Response,
+        responses={200: {"content": {"application/zip": {}},
+                         "description": "The snapshot as a .zip. X-Content-Hash carries its content hash."}},
+    )
+    def create_snapshot(release_id: str, body: SnapshotBody) -> Response:
+        """Write a stored release's reference blueprints as a snapshot and return it. Stores nothing."""
+        import tempfile
+        from pathlib import Path
+
+        from app.clhear import snapshot
+
+        _release_or_404(release_id)
+        name = f"clhear-snapshot-{release_id}"
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                made = snapshot.create(_engine(), release_id, Path(tmp) / name, licence=body.licence,
+                                       profiles=body.profiles or None, title=body.title, notice=body.notice,
+                                       make_zip=True)
+            except snapshot.SnapshotError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            data = Path(made["zip"]).read_bytes()
+        return Response(content=data, media_type="application/zip",
+                        headers={"X-Content-Hash": made["content_hash"],
+                                 "Content-Disposition": f'attachment; filename="{name}.zip"'})
+
+    @application.post("/v1/snapshots/verify")
+    def verify_snapshot(body: SnapshotFile) -> dict:
+        """Check that every file a snapshot lists is present with its hash. Reads the files only."""
+        from app.clhear import snapshot
+
+        with _snapshot_file(body.snapshot) as path:
+            try:
+                return snapshot.verify(path)
+            except snapshot.SnapshotError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @application.post("/v1/snapshots/match")
+    def match_snapshot(body: SnapshotMatchBody) -> dict:
+        """Whether an organisation profile gets the same verdicts as a profile of the snapshot.
+        Reads the files only: no model call, nothing stored."""
+        from app.clhear import snapshot
+
+        with _snapshot_file(body.snapshot) as path:
+            try:
+                return snapshot.match(path, body.attributes)
+            except snapshot.SnapshotError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @application.post("/v1/contributions/validate", response_model=ContributionProposal)
     def validate_contribution(body: ContributionProposal) -> ContributionProposal:
         """Validate a contribution proposal. This service does not send it anywhere."""
@@ -395,6 +467,28 @@ def _write_source(key: str, body: SourceBody) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _source_out(row)
+
+
+@contextmanager
+def _snapshot_file(encoded: str):
+    """A base64 snapshot .zip as a temporary file, removed afterwards."""
+    import base64
+    import binascii
+    import tempfile
+    from pathlib import Path
+
+    try:
+        data = base64.b64decode(encoded or "", validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="snapshot is not base64") from exc
+    if not data:
+        raise HTTPException(status_code=422, detail="snapshot is empty")
+    if len(data) > MAX_SNAPSHOT_BYTES:
+        raise HTTPException(status_code=413, detail=f"a snapshot is at most {MAX_SNAPSHOT_BYTES} bytes")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "snapshot.zip"
+        path.write_bytes(data)
+        yield path
 
 
 def _release_or_404(release_id: str) -> dict:

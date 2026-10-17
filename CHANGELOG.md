@@ -10,6 +10,8 @@ A release's reference blueprints can be published as a snapshot that anyone can 
 - **Recipes.** `clhear recipe apply` registers a scope's sources, the scope and its profiles from one file. Each snapshot carries the recipe of its release.
 - Each live run stores what a snapshot needs (`snapshot_basis` in the release). A release made before this change is not snapshotted: run the scope again.
 - The public blueprint (`GET /v1/releases/{release_id}/blueprints/{profile_id}`) carries `profile_attributes`, the organisation profile it was composed for.
+- A snapshot carries Layers 7 and 8 as the run left them. `risk.json` holds each penalty a binding text states, quoted, with the obligations it refers to, and each obligation's risk score. `practices.json` holds each practice read from a text that does not bind, quoted, with its component. The manifest lists the warnings, and the `content_hash` covers the manifest's own fields as well as the files.
+- **Snapshot API.** `POST /v1/releases/{release_id}/snapshot` returns a release's snapshot as a `.zip`; `POST /v1/snapshots/verify` and `POST /v1/snapshots/match` check one and match a profile against it. None stores anything. A `.zip` holding more files or bytes than a snapshot can is refused before it is read.
 
 ### Sources that do not bind
 - A source says whether it binds (`binding`, `clhear sources add --not-binding`). A text registered with `"binding": false` gives no obligations, even where it uses the words of duty; L8 reads it for practices. Unset keeps the rule by kind. Migration 0046 adds the column; existing sources stay unset.

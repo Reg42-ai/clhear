@@ -132,6 +132,60 @@ components:
       - sources
       title: ScopeBody
       type: object
+    SnapshotBody:
+      additionalProperties: false
+      properties:
+        licence:
+          description: The licence the snapshot is published under, or 'not-for-publication'
+          title: Licence
+          type: string
+        notice:
+          default: ''
+          title: Notice
+          type: string
+        profiles:
+          description: Some of the release's profiles; empty means all
+          items:
+            type: string
+          title: Profiles
+          type: array
+        title:
+          default: ''
+          title: Title
+          type: string
+      required:
+      - licence
+      title: SnapshotBody
+      type: object
+    SnapshotFile:
+      additionalProperties: false
+      properties:
+        snapshot:
+          description: The snapshot .zip, base64-encoded
+          title: Snapshot
+          type: string
+      required:
+      - snapshot
+      title: SnapshotFile
+      type: object
+    SnapshotMatchBody:
+      additionalProperties: false
+      properties:
+        attributes:
+          additionalProperties: true
+          description: 'The organisation profile to match: jurisdictions, roles, conditions,
+            licences'
+          title: Attributes
+          type: object
+        snapshot:
+          description: The snapshot .zip, base64-encoded
+          title: Snapshot
+          type: string
+      required:
+      - snapshot
+      - attributes
+      title: SnapshotMatchBody
+      type: object
     SourceBody:
       additionalProperties: false
       properties:
@@ -656,6 +710,45 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Get Release Blueprint
+  /v1/releases/{release_id}/snapshot:
+    post:
+      description: Write a stored release's reference blueprints as a snapshot and
+        return it. Stores nothing.
+      operationId: create_snapshot_v1_releases__release_id__snapshot_post
+      parameters:
+      - in: path
+        name: release_id
+        required: true
+        schema:
+          title: Release Id
+          type: string
+      - in: header
+        name: authorization
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/zip: {}
+          description: The snapshot as a .zip. X-Content-Hash carries its content
+            hash.
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Create Snapshot
   /v1/runs:
     post:
       operationId: create_run_v1_runs_post
@@ -887,6 +980,80 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Scope Advice
+  /v1/snapshots/match:
+    post:
+      description: 'Whether an organisation profile gets the same verdicts as a profile
+        of the snapshot.
+
+        Reads the files only: no model call, nothing stored.'
+      operationId: match_snapshot_v1_snapshots_match_post
+      parameters:
+      - in: header
+        name: authorization
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotMatchBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Match Snapshot V1 Snapshots Match Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Match Snapshot
+  /v1/snapshots/verify:
+    post:
+      description: Check that every file a snapshot lists is present with its hash.
+        Reads the files only.
+      operationId: verify_snapshot_v1_snapshots_verify_post
+      parameters:
+      - in: header
+        name: authorization
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotFile'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Verify Snapshot V1 Snapshots Verify Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Verify Snapshot
   /v1/sources:
     get:
       operationId: list_sources_v1_sources_get
