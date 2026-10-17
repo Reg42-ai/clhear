@@ -10,7 +10,7 @@ A regulation is a list of obligations written as prose. An organisation only has
 
 | Term | Meaning |
 | --- | --- |
-| Source | An official text published by a lawmaker, regulator, court or standards body. It has a kind (`law`, `regulation`, `guidance`, `enforcement`, `register` …) and a publisher. |
+| Source | An official text published by a lawmaker, regulator, court or standards body. It has a kind (`law`, `regulation`, `guidance`, `enforcement`, `register` …), a publisher, and says whether it binds (`binding`). Unset, the kind decides: `enforcement` and `register` sources do not bind, every other kind does. |
 | Register | An official register of licensed or authorised entities, or of licence categories (source kind `register`). L4 reads licence types from its entries; it is never read for obligations. |
 | Publisher | Who issues a source, as registered with it (`issuer`). Source advice asks for further sources from the same publisher. |
 | Clause | One unit of a source's text (an article, a section, a paragraph, a list item), kept exactly as read, with a stable reference such as `art-32/1`. |
@@ -32,6 +32,8 @@ A regulation is a list of obligations written as prose. An organisation only has
 | Cross-reference | A clause's mention of another text or provision ("section 2 of the Harbour Lighting Act 2019", "under Part 7"), kept with its quote and offsets. |
 | Source inventory | Every source in scope and every text their clauses cite, each `derived` (read and built), `pending` (registered, not built) or `unresolved` (cited, not registered). |
 | Source advice | For each layer that could not derive its records, the kinds of official source to add to L1 and the source kind to register each as; for a text the clauses cite but the scope does not hold, that text by name. |
+| Snapshot | A release's reference blueprints as files anyone can check and match against an organisation profile ([snapshots.md](snapshots.md)). |
+| Recipe | The sources, the scope and the profiles of a run in one file; `clhear recipe apply` registers them. |
 
 ## The evidence contract
 
@@ -54,12 +56,18 @@ flowchart TB
     L4["L4 · Profile attributes and applicability<br/>which obligations apply to which organisation"]
     L5["L5 · Compliance activities<br/>who operates each component"]
     L6["L6 · Composition and reference blueprints<br/>covering set, proof, explanations"]
+    L7["L7 · Risk scores<br/>stated penalties, enforcement events"]
+    L8["L8 · Practices<br/>guidance, ordered remediation"]
     L1 --> L2 --> L3
     L2 --> L4
     L3 --> L5
     L4 --> L5
     L5 --> L6
+    L6 --> L7
+    L6 --> L8
 ```
+
+L7 and L8 run after the blueprint is composed: composition reads L2 to L6 and nothing above them, and the risk scores and practices are attached to its elements.
 
 ### L1: Sources
 
@@ -166,7 +174,7 @@ The result is a pure function of its inputs: same scope, profile and layers give
 
 | | `CLHEAR_LLM_PROVIDER=fake` | `anthropic` / `openai_compatible` / `bedrock` |
 | --- | --- | --- |
-| What runs | A fixed sample: one placeholder obligation per source | The full L1 to L6 build over your scope |
+| What runs | A fixed sample: one placeholder obligation per source | The full L1 to L8 build over your scope |
 | Use it for | Seeing the blueprint shape | Real blueprints |
 | Blueprint | Marked `"sample": true` | Real |
 
@@ -175,13 +183,14 @@ The result is a pure function of its inputs: same scope, profile and layers give
 L7 (Risk scoring) has two inputs, read from the sources in scope:
 
 - **Stated penalties** (`app/clhear/l7/penalties.py`), from sources of kind `law` or `regulation`. A clause that makes a breach an offence, or liable to imprisonment, disqualification, revocation, suspension, a fine or a penalty, gives a penalty per type, with the maximum the clause states ("a fine not exceeding 2,000 units", "for a term not exceeding one year"), both quoted with offsets. Each penalty is linked to the obligations whose provisions the clause refers to: a provision it cites ("fails to comply with section 1", resolved like any cross-reference, with every clause inside that provision), a sibling provision ("subsection (1)"), its division ("this Part") or the whole text ("this Act", "this rule"). A clause that refers to nothing is kept, unlinked. The risk dimension `stated_penalty` is the most severe penalty stated for the obligation: imprisonment, then disqualification or revocation, then suspension, then a fine or penalty, with the log of a monetary maximum. No model is called.
+  A penalty stated in the opening words of a list, which end with a colon, is read once from those words and linked to the clauses its points cite. A clause cited to leave it out (after "other than", "except" or "save") is not linked.
 - **Enforcement events**, from sources of kind `enforcement`: the stronger input. Enforcement history, likelihood, and financial and reputational impact rest on them.
 
 The published weights (method `risk-v3`) are enforcement history 0.25, likelihood 0.20, financial impact 0.15, reputational, operational and regulatory attention 0.10 each, and stated penalty 0.10. Without an enforcement source, L7 is built from the stated penalties alone and the blueprint carries a `no_enforcement_sources` gap that says how many penalties the risk rests on. With neither, L7 is recorded as not built.
 
 L8 (Practices) builds from two kinds of source in scope, without a model:
 
-- **Guidance** (kind `guidance`): each clause is a practice, or a finding when the source is an examination report.
+- **Guidance** (kind `guidance`): each clause is a practice, or a finding when the source is an examination report. Register guidance that does not bind with `"binding": false`: L2 then reads no obligations from it, even where it uses the words of duty, and each of its clauses can be a practice.
 - **Enforcement** (kind `enforcement`): each clause that states the remediation the action orders or the respondent undertakes ("is ordered to …", "agreed to …", corrective action, a duty with a deadline such as "shall, within 30 days, …") is a practice, marked `remediation` with the source it was `ordered_in`. The action's findings are not practices.
 
 Only the most specific clauses are read, and a clause that is the basis of an obligation is that obligation, not a practice. Each practice is quoted (`evidence`, with offsets) and names the component whose name, purpose and obligations share the most words with it. With neither kind in scope, L8 is recorded as not built and the blueprint carries a `no_reference_sources` gap.
@@ -238,6 +247,8 @@ A source that is missing is thereby told apart from one that does not apply.
 | `app/clhear/l6/composer.py` | Set cover, minimality proof, blueprint |
 | `app/clhear/l7/penalties.py`, `l7/score.py` | Stated penalties and their links; the published risk dimensions and scores |
 | `app/clhear/l8/reference.py` | Practices from guidance and from the remediation enforcement sources order |
+| `app/clhear/snapshot.py`, `app/clhear/recipe.py` | Snapshots (create, verify, match) and recipes |
+| `app/clhear/blueprint_view.py` | The public shape of a reference blueprint, shared by the API and snapshots |
 | `app/clhear/platform/gateway.py` | Model providers, retries, spend caps, call ledger |
 | `migrations/` | Numbered schema migrations, applied on startup |
 | `openapi/clhear-v1.yaml` | The API contract, checked against the app in CI |

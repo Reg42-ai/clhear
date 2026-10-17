@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+A release's reference blueprints can be published as a snapshot that anyone can check and match against their own organisation profile, and every layer, L1 to L8, builds from the sources a scope holds.
+
+### Snapshots and recipes
+- **`clhear snapshot create`** writes a release's reference blueprints as plain files: each profile's blueprint (as the API serves it), the applicability conditions of every obligation in scope with each profile's verdict, the questions the texts raise, the sources with the version and SHA-256 of the text that was read, the models the run used, each layer's revision, and a manifest with the SHA-256 of every file and one `content_hash`. `--zip` writes a `.zip` file with fixed order and times. A licence (or `not-for-publication`) is required; a text that may not be republished stays out of a published snapshot.
+- **`clhear snapshot verify`** checks the files against the manifest. **`clhear snapshot match`** says whether an organisation profile matches one of the snapshot's profiles: every obligation in scope gets the same verdict, by the rule composition uses. It reads the files alone and calls no model.
+- **Recipes.** `clhear recipe apply` registers a scope's sources, the scope and its profiles from one file. Each snapshot carries the recipe of its release.
+- Each live run stores what a snapshot needs (`snapshot_basis` in the release). A release made before this change is not snapshotted: run the scope again.
+- The public blueprint (`GET /v1/releases/{release_id}/blueprints/{profile_id}`) carries `profile_attributes`, the organisation profile it was composed for.
+
+### Sources that do not bind
+- A source says whether it binds (`binding`, `clhear sources add --not-binding`). A text registered with `"binding": false` gives no obligations, even where it uses the words of duty; L8 reads it for practices. Unset keeps the rule by kind. Migration 0046 adds the column; existing sources stay unset.
+
+### Penalties stated in a list (L7)
+- A penalty stated in the opening words of a list, which end with a colon, is read once from those words and linked to the clauses its points cite. Before, that opening clause was skipped because it repeats its points, so the penalty was not found. A clause cited to leave it out (after "other than", "except" or "save") is not linked.
+
 ## 0.2.1
 
 Who a duty binds is read as a party, never a thing, a heading or an introductory phrase, so an organisation can answer every question a scope raises.

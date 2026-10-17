@@ -22,6 +22,7 @@ A statute is long. A compliance program has to answer a shorter question: *for a
 - [Reading a blueprint](#reading-a-blueprint)
 - [Is this blueprint credible? A checklist](#is-this-blueprint-credible-a-checklist)
 - [Comparing blueprints and getting notified](#comparing-blueprints-and-getting-notified)
+- [Publishing a reference blueprint as a snapshot](#publishing-a-reference-blueprint-as-a-snapshot)
 - [Command line reference](#command-line-reference)
 - [HTTP API reference](#http-api-reference)
 - [Configuration](#configuration)
@@ -29,6 +30,8 @@ A statute is long. A compliance program has to answer a shorter question: *for a
 - [Deploy, pin a version, contribute](#deploy-pin-a-version-contribute)
 
 More detail: [docs/how-it-works.md](docs/how-it-works.md) (each layer, and the rules it applies) and [docs/install.md](docs/install.md) (database, model, container, AWS). A complete walkthrough lives in [examples/security-baseline](examples/security-baseline).
+
+Publishing reference blueprints that anyone can check and match: [docs/snapshots.md](docs/snapshots.md).
 
 ---
 
@@ -45,8 +48,11 @@ flowchart LR
         L3 --> L5["L5 · Compliance activities<br/>who operates<br/>each component"]
         L4 --> L5
         L5 --> L6["L6 · Composition<br/>covering set,<br/>proof, explanations"]
+        L6 --> L7["L7 · Risk scores<br/>penalties the texts state,<br/>enforcement actions"]
+        L6 --> L8["L8 · Practices<br/>guidance, remediation<br/>enforcement orders"]
     end
     L6 --> B["Reference blueprint (JSON)<br/>stored in a release"]
+    B --> N["Snapshot<br/>files anyone can<br/>check and match"]
 ```
 
 In plain words, a run:
@@ -56,6 +62,10 @@ In plain words, a run:
 3. **Names components in the text's words.** A component is what the obligation tells the addressee to do or to have ("keep a log of security incidents"). The model may group obligations under one component, but a name is kept only if every word of it is in the cited clauses. An obligation that names nothing concrete gets no invented component: it becomes a gap with a recommendation.
 4. **Asks the questions the texts raise.** An obligation's applicability conditions become questions for the organisation: the jurisdiction its source declares, the role it is addressed to ("the controller", "a covered entity", "every employer"), and its own "where / if / unless" clause when that clause is about the addressee ("where an organisation processes personal data"). An obligation applies when every question is answered and matches; a question with no answer leaves the obligation undetermined.
 5. **Composes the reference blueprint.** CLHEAR takes every component an obligation requires, then picks the fewest extra components that cover the rest, removes anything redundant, proves it, and explains each element with the obligations it cites and their quotes. Before composing, every derived record is checked against the clause text again (the anchoring check); anything that fails is withheld and listed.
+6. **Scores risk (L7)** from the penalties the binding texts state for a breach (a fine and its maximum, imprisonment, suspension …), linked to the obligations it names, and from enforcement actions when the scope holds them.
+7. **Reads practices (L8)** from texts that do not bind (guidance registered with `"binding": false`) and from the remediation enforcement actions order, each linked to the component it concerns.
+
+L7 and L8 build whenever their sources are in scope; a layer with none says which kind of source to add. A release can then be published as a **snapshot**: plain files anyone can check and match against their own organisation profile ([below](#publishing-a-reference-blueprint-as-a-snapshot)).
 
 Where the model fits: clause text is stored exactly as read and the model never rewrites it. Obligation detection, applicability and composition are deterministic rules; the same inputs give the same blueprint. The model triages weak obligations, splits hard sentences, groups obligations under components, reads licence types and fills characteristics, and each answer is kept only when it is the text's own words. Every step that uses it records which model answered.
 
@@ -67,7 +77,7 @@ Where the model fits: clause text is stored exactly as read and the model never 
 | **Scope** | A named list of sources that belong in one program. | `privacy-program` → `[gdpr, dpa-guidance]` |
 | **Organisation profile** | The organisation's answers to the questions the texts raise: its profile attribute values. | `acme` → `{"jurisdictions": ["EU"], "roles": ["controller"], "conditions": {"processes personal data": true}}` |
 | **Run** | One execution over a scope for one or more profiles. Queued, then run by a worker. | `run_…` |
-| **Release** | The stored result of a finished run: one **reference blueprint** per profile. | `rel_…` |
+| **Release** | The stored result of a finished run: one **reference blueprint** per profile. It can be published as a snapshot. | `rel_…` |
 
 **Profiles answer the texts' questions.** There is no fixed list of organisation types. After a scope has been built once, `GET /v1/profile-schema?scope=<name>` lists the questions its applicability conditions raise, each with the quotes it came from:
 
@@ -143,6 +153,8 @@ curl -s -X POST localhost:8000/v1/sources -H 'content-type: application/json' -d
 curl -s -X POST localhost:8000/v1/sources/baseline/test-fetch
 # {"clauses": 16, "preview": [{"clause_ref": "sec-1", "text": "Section 1. Every organisation shall appoint …"}, …]}
 ```
+
+Add `"binding": false` to a text that does not bind the organisations it applies to: obligations are read from binding texts alone, and L8 reads the others for practices. Unset, the kind decides: `enforcement` and `register` sources do not bind, every other kind does.
 
 `test-fetch` reads the source with the real adapter and writes nothing. Look at the preview: those `clause_ref`s are what every blueprint will cite. A scanned PDF has no text layer; run OCR first.
 
@@ -245,6 +257,19 @@ Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote
 
 **Webhooks:** register a URL and secret with `POST /v1/webhooks`. Deliveries carry `X-CLHEAR-Event` and `X-CLHEAR-Signature: sha256=<HMAC-SHA256 of the body>`. Events: `run.started`, `run.finished`, `run.failed`, `source.failed`, `release.published`, `blueprint.changed`. A failed delivery never fails the run.
 
+## Publishing a reference blueprint as a snapshot
+
+A snapshot writes a release's reference blueprints as plain files: the blueprints, the applicability conditions of every obligation in scope with each profile's verdict, the questions the texts raise, the sources with the hash of the text that was read, the recipe to run the scope again, and a manifest with the SHA-256 of every file.
+
+```bash
+clhear snapshot create --release $RELEASE_ID --out my-snapshot --licence CC-BY-4.0 --zip
+clhear snapshot verify my-snapshot.zip                                  # the files are the ones published
+clhear snapshot match my-snapshot.zip --profile my-profile.json         # does my profile match one of its profiles?
+clhear recipe apply my-snapshot/recipe.json                             # register its sources, scope and profiles here
+```
+
+A profile matches when every obligation in scope gets the same verdict (applies, not applicable, undetermined) for both: the snapshot's reference blueprint for that profile is then the one for yours. `create` requires a licence, and refuses a text that may not be republished unless the snapshot is `not-for-publication`. The full guide is [docs/snapshots.md](docs/snapshots.md).
+
 ## Command line reference
 
 | Command | What it does |
@@ -262,13 +287,17 @@ Every quote is `{"clause_id", "source_key", "clause_ref", "start", "end", "quote
 | `clhear export --release R --profile P [--out FILE]` | Write one blueprint as JSON |
 | `clhear release --release R [--out DIR]` | Write a whole stored release to a directory |
 | `clhear validate FILE [--contribution]` | Check a profile or a contribution proposal |
-| `clhear sources add KEY (--url U \| --path F \| --text-file F) [--kind K --jurisdiction J --publisher P --name N --reference R]` | Register a source (`--reference`: the publisher's own reference for it, so texts that cite it resolve) |
+| `clhear sources add KEY (--url U \| --path F \| --text-file F) [--kind K --jurisdiction J --publisher P --name N --reference R] [--binding \| --not-binding]` | Register a source (`--reference`: the publisher's own reference for it, so texts that cite it resolve; `--not-binding`: a text read for practices, not obligations) |
 | `clhear sources list` / `clhear sources test KEY` | List sources; preview what a source's adapter reads, storing nothing |
 | `clhear sources advise --scope S [--json]` | Which official sources to add, per layer |
 | `clhear scope create NAME SOURCE...` | Name a scope |
 | `clhear profile questions --scope S [--json]` | The questions a built scope raises, and candidate organisation profiles |
 | `clhear profile set ID [--file F \| --jurisdiction --role --not-role --condition fact=true --licence]` | Store a profile |
 | `clhear blueprint show --release R --profile P` | A blueprint as readable text |
+| `clhear recipe apply FILE` | Register a recipe's sources, scope and profiles |
+| `clhear snapshot create --release R --out DIR --licence L [--profile P ...] [--title T --notice N --zip]` | Write a release's reference blueprints as a snapshot |
+| `clhear snapshot verify PATH` | Check a snapshot folder or `.zip` against its manifest |
+| `clhear snapshot match PATH --profile FILE [--json]` | Whether a profile matches one of a snapshot's profiles (exit 0 match, 2 no match) |
 
 ## HTTP API reference
 
