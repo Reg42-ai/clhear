@@ -32,6 +32,10 @@ host_sources = sa.Table(
     # The publisher's own reference for the text ("Act No. 12 of 2019", "2030/17"):
     # a clause that cites it by that reference resolves to this source.
     sa.Column("reference", sa.Text, nullable=False, default="", server_default=""),
+    # Whether the text binds the organisations it applies to. Unset: by kind (a law, regulation
+    # or standard binds; enforcement actions and registers do not). A text that does not bind
+    # gives no obligations; L8 reads guidance from it.
+    sa.Column("binding", sa.Boolean, nullable=True),
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     schema=L0_SCHEMA,
 )
@@ -115,11 +119,14 @@ def upsert_source(engine: Engine, key: str, body: dict) -> dict:
         "jurisdiction": body.get("jurisdiction", (current or {}).get("jurisdiction") or ""),
         "issuer": body.get("issuer", (current or {}).get("issuer") or ""),
         "reference": body.get("reference", (current or {}).get("reference") or ""),
+        "binding": body.get("binding", (current or {}).get("binding")),
     }
     if not merged["adapter"]:
         raise ValueError("adapter is required")
     if merged["licence"] not in {"open", "restricted"}:
         raise ValueError("licence must be open or restricted")
+    if merged["binding"] is not None and not isinstance(merged["binding"], bool):
+        raise ValueError("binding must be true, false or unset")
     with engine.begin() as conn:
         if current:
             conn.execute(host_sources.update().where(host_sources.c.key == key).values(**merged, updated_at=_now()))
@@ -173,6 +180,9 @@ def registry_entries(engine: Engine, keys: list[str]) -> list[dict]:
             "publisher": row["issuer"] or "",
             "instrument": row.get("reference") or row["name"] or row["key"],
         })
+        if row.get("binding") is not None:
+            # L2 reads obligations from binding texts only; a text that does not bind is guidance.
+            entries[-1]["tier"] = "binding" if row["binding"] else "guidance"
     return entries
 
 

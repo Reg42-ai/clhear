@@ -271,9 +271,10 @@ def cmd_sources_add(args) -> int:
     row = hoststore.upsert_source(_engine(), args.key, {
         "adapter": adapter, "locator": locator, "name": args.name or args.key, "kind": args.kind,
         "jurisdiction": args.jurisdiction or "", "issuer": args.issuer or "", "reference": args.reference or "",
-        "licence": "open"})
+        "licence": "open", "binding": args.binding})
     print(f"registered {row['key']} ({adapter}, kind {row['kind']}"
-          + (f", {row['jurisdiction']}" if row["jurisdiction"] else "") + ")")
+          + (f", {row['jurisdiction']}" if row["jurisdiction"] else "")
+          + ("" if row.get("binding") is None else (", binding" if row["binding"] else ", not binding")) + ")")
     return 0
 
 
@@ -436,6 +437,11 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--name", default="")
     add.add_argument("--reference", default="",
                      help="the publisher's own reference for the text (its number or citation), so clauses that cite it resolve")
+    binds = add.add_mutually_exclusive_group()
+    binds.add_argument("--binding", dest="binding", action="store_true", default=None,
+                       help="the text binds the organisations it applies to: read it for obligations")
+    binds.add_argument("--not-binding", dest="binding", action="store_false",
+                       help="the text does not bind (voluntary guidance): no obligations, L8 reads it for practices")
     add.set_defaults(func=cmd_sources_add)
     sources.add_parser("list", help="list registered sources").set_defaults(func=cmd_sources_list)
     test = sources.add_parser("test", help="read a source and preview its clauses; stores nothing")

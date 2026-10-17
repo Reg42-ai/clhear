@@ -27,6 +27,7 @@ class SourceBody(BaseModel):
     jurisdiction: str = ""
     issuer: str = ""
     reference: str = ""
+    binding: bool | None = None
 
 
 class SourceCreate(SourceBody):
@@ -98,6 +99,7 @@ def _source_out(row: dict) -> dict:
         "jurisdiction": row["jurisdiction"],
         "issuer": row["issuer"],
         "reference": row.get("reference") or "",
+        "binding": row.get("binding"),
         "updated_at": _iso(row["updated_at"]),
     }
 

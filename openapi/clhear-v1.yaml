@@ -138,6 +138,11 @@ components:
         adapter:
           title: Adapter
           type: string
+        binding:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Binding
         enabled:
           default: true
           title: Enabled
@@ -184,6 +189,11 @@ components:
         adapter:
           title: Adapter
           type: string
+        binding:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Binding
         enabled:
           default: true
           title: Enabled
