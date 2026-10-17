@@ -93,12 +93,12 @@ def dashboard(engine: Engine) -> dict:
         calls = int(conn.execute(sa.select(sa.func.count()).select_from(llm_calls)).scalar() or 0)
         ops_n = int(conn.execute(sa.select(sa.func.count()).select_from(ai_ops)).scalar() or 0)
         run_n = int(conn.execute(sa.select(sa.func.count()).select_from(runs)).scalar() or 0)
-        from app.clhear.platform.gateway import PREMIUM_MODELS
+        from app.clhear.platform.gateway import premium_model_ids
 
         frontier = float(
             conn.execute(
                 sa.select(sa.func.coalesce(sa.func.sum(llm_calls.c.cost_usd), 0)).where(
-                    sa.or_(llm_calls.c.model.in_(sorted(PREMIUM_MODELS)), llm_calls.c.tier == "frontier")
+                    sa.or_(llm_calls.c.model.in_(premium_model_ids()), llm_calls.c.tier == "frontier")
                 )
             ).scalar()
             or 0

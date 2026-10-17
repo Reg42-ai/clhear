@@ -120,6 +120,8 @@ clhear export --release <release_id from quickstart> --profile example-profile
 | `openai_compatible` | `OPENAI_BASE_URL`, `OPENAI_API_KEY` | `gpt-4o` |
 | `bedrock` | `BEDROCK_MODEL_ID` (or `CLHEAR_LLM_MODEL`) and AWS credentials | none |
 
+On Bedrock, give the model id AWS lists for your Region. Where AWS lists no in-Region id for it, give its cross-Region id, such as `us.anthropic.claude-opus-5`; the engine prices it as the model it routes to.
+
 `CLHEAR_LLM_MODEL` picks another model. For Claude, `CLHEAR_LLM_EFFORT` (`low` … `max`, default `medium`) sets how hard the model thinks. On Claude Opus 5 a request the model declines is retried on a fallback model server-side; set `CLHEAR_LLM_FALLBACKS=false` to turn that off.
 
 ```bash
@@ -339,7 +341,7 @@ The full contract is [openapi/clhear-v1.yaml](openapi/clhear-v1.yaml).
 | `CLHEAR_BIND_HOST`, `CLHEAR_PORT` | `127.0.0.1`, `8000` | Where `serve` listens |
 | `CLHEAR_SERVICE_TOKENS`, `CLHEAR_SERVICE_TOKEN_FILE` | unset | Bearer tokens, required off loopback |
 
-**Model spend is capped** at $20 per layer per day (`CLHEAR_GATEWAY_FLEET_DAILY_CAP_USD`) and $100 per day overall (`CLHEAR_GATEWAY_GLOBAL_DAILY_CAP_USD`). A short standard costs cents to a few dollars; a long regulation with hundreds of obligations can reach the per-layer cap. Raise the caps before such a run, or use a lower `CLHEAR_LLM_EFFORT`. A capped call counts as a failed model call in the layer report, and a layer where every call failed fails the run, so a cap never produces a silently thin blueprint.
+**Model spend is capped** at $20 per layer per day (`CLHEAR_GATEWAY_FLEET_DAILY_CAP_USD`) and $100 per day overall (`CLHEAR_GATEWAY_GLOBAL_DAILY_CAP_USD`). Calls to Claude Opus 5 on Bedrock, under any of its ids, also count against $50 per month (`CLHEAR_FRONTIER_MONTHLY_CAP_USD`). A short standard costs cents to a few dollars; a long regulation with hundreds of obligations can reach the per-layer cap. Raise the caps before such a run, or use a lower `CLHEAR_LLM_EFFORT`. A capped call counts as a failed model call in the layer report, and a layer where every call failed fails the run, so a cap never produces a silently thin blueprint.
 
 ## What CLHEAR stores, and what it does not
 

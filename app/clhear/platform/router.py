@@ -22,12 +22,12 @@ from sqlalchemy.engine import Engine
 
 from app.clhear.models import llm_calls, router_quality
 from app.clhear.platform.gateway import (
-    PREMIUM_MODELS,
     FakeProvider,
     Gateway,
     LlmResult,
     Provider,
     SpendCapExceeded,
+    is_premium,
 )
 from app.clhear.platform.task_classes import (
     CLAUDE_OPUS_5,
@@ -442,7 +442,9 @@ class Router:
         chosen: RoutingDecision | None = None
         for rung, model in enumerate(ladder):
             quality = self._quality(task_id, model, rung)
-            if model in PREMIUM_MODELS:
+            # A premium rung waits for a task that needs it. The consumer's configured model is
+            # its only rung, so it is never set aside; the gateway's monthly cap still applies.
+            if is_premium(model) and source != "configured":
                 ok, why = self._premium_ok(task)
                 if not ok:
                     rejected.append({"tier": task.task_class, "rung": rung, "model": model, "quality": quality, "reason": why})

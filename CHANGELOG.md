@@ -13,6 +13,10 @@ A release's reference blueprints can be published as a snapshot that anyone can 
 - A snapshot carries Layers 7 and 8 as the run left them. `risk.json` holds each penalty a binding text states, quoted, with the obligations it refers to, and each obligation's risk score. `practices.json` holds each practice read from a text that does not bind, quoted, with its component. The manifest lists the warnings, and the `content_hash` covers the manifest's own fields as well as the files.
 - **Snapshot API.** `POST /v1/releases/{release_id}/snapshot` returns a release's snapshot as a `.zip`; `POST /v1/snapshots/verify` and `POST /v1/snapshots/match` check one and match a profile against it. None stores anything. A `.zip` holding more files or bytes than a snapshot can is refused before it is read.
 
+### Bedrock model ids
+- A Bedrock model is one model under each of its ids: its base id and each cross-Region id (`us.`, `eu.`, `global.` and the other geography prefixes), with or without a version suffix. It has one price under each, and for Claude Opus 5 each counts against the premium monthly cap. Before, a cross-Region id, which the engine's Bedrock calls need for Claude Opus 5 in us-east-1, was priced at the default rate and not counted against that cap.
+- The model you configure for a provider is its one rung, so it runs each task. Before, a configured premium model was held back for the tasks marked high, and the other tasks failed with "no eligible rung".
+
 ### Sources that do not bind
 - A source says whether it binds (`binding`, `clhear sources add --not-binding`). A text registered with `"binding": false` gives no obligations, even where it uses the words of duty; L8 reads it for practices. Unset keeps the rule by kind. Migration 0046 adds the column; existing sources stay unset.
 
