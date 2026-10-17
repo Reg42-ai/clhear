@@ -96,9 +96,12 @@ def _quote(clause: dict, start: int, end: int) -> dict:
             "start": start, "end": end, "quote": clause["text"][start:end]}
 
 
-def read(clause: dict) -> list[dict]:
-    """The penalties one clause states: type and maximum, each quoted."""
-    text = clause["text"] or ""
+def read(clause: dict, upto: int | None = None) -> list[dict]:
+    """The penalties one clause states: type and maximum, each quoted.
+
+    ``upto`` limits the reading to the clause's opening words (the words before
+    its first point), so a list's points are read once, as their own clauses."""
+    text = (clause["text"] or "")[:upto] if upto is not None else (clause["text"] or "")
     if not LIABILITY.search(text):
         return []
     mentions: list[tuple[int, int, str]] = []
@@ -158,11 +161,40 @@ def find(conn: Connection, source_keys) -> list[dict]:
     binding = [k for k in keys if kinds.get(k) in BINDING_KINDS]
     out = []
     for key, rows in _clauses(conn, binding).items():
-        for clause in _leaves(rows):
-            for penalty in read(clause):
+        leaves = _leaves(rows)
+        leaf_ids = {c["id"] for c in leaves}
+        for clause in rows:
+            upto = None if clause["id"] in leaf_ids else opening_words(clause, rows)
+            if upto == 0:
+                continue
+            for penalty in read(clause, upto):
                 out.append({**penalty, "id": penalty_id(clause, penalty["penalty_type"]), "source_key": key,
-                            "clause_ref": clause["ref"], "clause_id": clause["id"], "clause": clause})
+                            "clause_ref": clause["ref"], "clause_id": clause["id"], "clause": clause,
+                            "lists": upto is not None and introduces_list(clause, upto)})
     return out
+
+
+def opening_words(clause: dict, rows: list[dict]) -> int:
+    """How many characters of a parent clause come before its first point.
+
+    A parent clause repeats its points' text ("... whichever is higher: (a) ...;
+    (b) ..."). Its own words are the ones before the first point it holds."""
+    text = clause["text"] or ""
+    starts = []
+    for child in rows:
+        if child["id"] == clause["id"] or not child["text"] or child["text"] not in text:
+            continue
+        if child.get("span_start") is not None and clause.get("span_start") is not None:
+            starts.append(child["span_start"] - clause["span_start"])
+        else:
+            starts.append(text.find(child["text"]))
+    starts = [s for s in starts if s >= 0]
+    return min(starts) if starts else len(text)
+
+
+def introduces_list(clause: dict, upto: int) -> bool:
+    """The opening words end with a colon: the points that follow name what the penalty is for."""
+    return (clause["text"] or "")[:upto].rstrip().endswith(":")
 
 
 def _obligations(conn: Connection, keys) -> dict[str, dict[str, list[str]]]:
@@ -174,6 +206,18 @@ def _obligations(conn: Connection, keys) -> dict[str, dict[str, list[str]]]:
             obligations.c.source_key.in_(sorted(keys)), obligations.c.status.in_(("derived", "validated")))):
         out.setdefault(r.source_key, {}).setdefault(r.clause_ref, []).append(r.id)
     return out
+
+
+# Words that take a provision out of a penalty instead of putting it in ("other than those laid down in Article 5").
+_EXCLUSION = re.compile(r"\b(?:other than|except(?: for)?|save(?: for)?|excluding|apart from|with the exception of)"
+                        r"(?:\s+(?:th(?:ose|at|e)|in|under|by|pursuant to|referred to in|laid down in|set out in))*\s*$",
+                        re.I)
+
+
+def excluded(text: str, mention: dict) -> bool:
+    """The reference is made to leave a provision out of the penalty."""
+    before = text[max(0, mention["start"] - 60):mention["start"]]
+    return bool(_EXCLUSION.search(before))
 
 
 def _links(conn: Connection, penalty: dict, clauses: dict[str, list[dict]], resolved: list[dict],
@@ -191,12 +235,18 @@ def _links(conn: Connection, penalty: dict, clauses: dict[str, list[dict]], reso
             for oid in obs.get(source_key, {}).get(target["ref"], []):
                 found.setdefault(oid, (method, via))
 
+    texts = {c["id"]: c["text"] or "" for c in own}
+    points = {c["id"] for c in descendants(own, clause) if c["id"] != clause["id"]} if penalty.get("lists") else set()
     for entry in resolved:
-        if entry["from"]["clause_id"] != clause["id"] or entry["status"] != "resolved" or not entry["target_ref"]:
+        origin = entry["from"]["clause_id"]
+        if origin != clause["id"] and origin not in points:
+            continue
+        if entry["status"] != "resolved" or not entry["target_ref"] or excluded(texts.get(origin, ""), entry["from"]):
             continue
         rows = clauses.get(entry["target_source"], [])
         target = next((c for c in rows if c["ref"] == entry["target_ref"]), None)
         if target is not None:
+            # A point of the list is quoted as the words that refer (its clause ref says which point).
             link(entry["target_source"], descendants(rows, target), "reference", entry["from"])
     for m in _RELATIVE.finditer(clause["text"]):
         unit = clause["ref"].split("/", 1)[0]

@@ -106,3 +106,49 @@ def test_penalties_give_l7_a_risk_input_without_enforcement(live):  # noqa: F811
     assert provisions[0]["published_by"] == "Example Harbour Authority"
     lineage = released["lineage"]
     assert lineage["unanchored"] == [] and lineage["rows"] == lineage["anchored"] > 0
+
+
+LISTED = """Regulation on harbour lanterns
+
+This text is written for CLHEAR's tests. It is not a law.
+
+Article 1
+Obligations of keepers
+1. Keepers shall light the harbour lantern every evening at sunset.
+2. Keepers shall record each lighting in a lantern log.
+
+Article 2
+Obligations of lantern makers
+Lantern makers shall test each lantern before it is placed on the market.
+
+Article 3
+Penalties
+1. Non-compliance with any of the following provisions, other than those laid down in Article 2, shall be subject to administrative fines of up to EUR 15 000 000 or, if the offender is an undertaking, up to 3 % of its total worldwide annual turnover for the preceding financial year, whichever is higher:
+(a) obligations of keepers pursuant to Article 1;
+(b) the duty to keep a lantern log pursuant to Article 1.
+2. The supply of incorrect information to the harbour authority shall be subject to administrative fines of up to EUR 7 500 000.
+"""
+
+
+def test_a_penalty_that_lists_its_provisions_is_read_once_and_linked_to_each_point(live):  # noqa: F811
+    """EU acts state the fine in a list's opening words and name the provisions in its points."""
+    from app.clhear.l7.models import penalty_links, stated_penalties
+    from app.clhear.runtime import engine
+
+    client, _ = live
+    client.post("/v1/sources", json={"key": "lanterns", "adapter": "local_text", "kind": "regulation",
+                                     "jurisdiction": "EU", "locator": {"text": LISTED}})
+    client.post("/v1/scopes", json={"name": "harbour-eu", "sources": ["lanterns"]})
+    client.put("/v1/profiles/keeper", json={"attributes": {"jurisdictions": ["EU"]}})
+    _run(client, "harbour-eu", ["keeper"])
+    with engine().connect() as conn:
+        stated = {r.clause_ref: r for r in conn.execute(
+            sa.select(stated_penalties).where(stated_penalties.c.valid_to.is_(None)))}
+        links = {(r.penalty_id, r.obligation_id.split("#")[1]) for r in conn.execute(
+            sa.select(penalty_links).where(penalty_links.c.valid_to.is_(None)))}
+    assert {ref: (r.penalty_type, r.maximum, r.amount, r.unit) for ref, r in stated.items()} == {
+        "art-3/1": ("fine", "EUR 15 000 000", 15000000.0, "EUR"),  # read from the opening words, once
+        "art-3/2": ("fine", "EUR 7 500 000", 7500000.0, "EUR")}
+    listed = {ob for pid, ob in links if pid == stated["art-3/1"].id}
+    assert listed == {"art-1/1", "art-1/2"}  # the points name Article 1; "other than ... Article 2" leaves it out
+    assert not {ob for pid, ob in links if pid == stated["art-3/2"].id}  # it refers to no provision
