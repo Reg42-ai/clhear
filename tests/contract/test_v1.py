@@ -45,12 +45,15 @@ def test_openapi_paths_match_the_contract():
         "/v1/profiles/{profile_id}",
         "/v1/releases/{release_id}",
         "/v1/releases/{release_id}/blueprints/{profile_id}",
+        "/v1/releases/{release_id}/snapshot",
         "/v1/runs",
         "/v1/runs/{run_id}",
         "/v1/runs/{run_id}/logs",
         "/v1/scopes",
         "/v1/scopes/{name}",
         "/v1/scopes/{name}/advice",
+        "/v1/snapshots/match",
+        "/v1/snapshots/verify",
         "/v1/sources",
         "/v1/sources/{key}",
         "/v1/sources/{key}/test-fetch",
@@ -66,9 +69,9 @@ def test_client_can_create_a_source_profile_run_and_blueprint(client, monkeypatc
     version = client.get("/v1/version")
     assert version.status_code == 200
     body = version.json()
-    assert body["engine_version"] == "0.2.0"
+    assert body["engine_version"] == "0.2.1"
     assert body["api_version"] == "v1"
-    assert body["schema_revision"] == "0042"
+    assert body["schema_revision"] == "0046"
     assert body["image_digest"] == "sha256:abc"
     assert client.get("/v1/health").json()["status"] == "ok"
     adapters = client.get("/v1/adapters").json()["adapters"]

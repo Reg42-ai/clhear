@@ -111,13 +111,20 @@ def _question(e: dict) -> dict:
         return {"key": "jurisdictions", "ask": "Where do you operate?", "value": pred["jurisdictions"],
                 "evidence": [found["source"]] if found.get("source") else []}
     if "roles" in pred:
-        labels = found.get("labels") or {}
+        from app.clhear.l4.predicates import role_question
+
+        labels, parties = found.get("labels") or {}, found.get("parties") or {}
         names = [labels.get(r, r) for r in pred["roles"]]
-        return {"key": "roles", "ask": "Are you " + " or ".join(f"'{n}'" for n in names) + "?", "value": pred["roles"],
+        kinds = [parties.get(r) or "organisation" for r in pred["roles"]]
+        return {"key": "roles", "ask": role_question(names, kinds), "value": pred["roles"],
+                "labels": dict(zip(pred["roles"], names)), "parties": dict(zip(pred["roles"], kinds)),
                 "evidence": found.get("subject") or []}
     if "condition" in pred:
-        return {"key": "conditions", "id": pred["condition"], "ask": f"Does this hold for you: {e['rationale']}?",
-                "value": pred.get("fact"), "evidence": found.get("condition") or []}
+        from app.clhear.l4.predicates import condition_question
+
+        return {"key": "conditions", "id": pred["condition"],
+                "ask": condition_question(found.get("fact") or pred.get("fact") or "", e["rationale"]),
+                "value": pred.get("fact"), "text": e["rationale"], "evidence": found.get("condition") or []}
     return {"key": "retired", "ask": "This duty carries an applicability edge from an earlier version; rebuild the scope.",
             "value": pred, "evidence": []}
 
@@ -493,9 +500,10 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
                 slot["duties"].append(ob.get("stable_id") or oid)
     open_questions = sorted(questions.values(), key=lambda q: (q["key"], -len(q["duties"]), str(q["value"])))
     gaps = _evidence_gaps(conn, scope_name, coverage, items, verdicts) if verdicts is not None else []
-    from app.clhear.advisor import for_blueprint
+    from app.clhear.advisor import for_blueprint, source_inventory
 
     source_advice = for_blueprint(conn, scope_name, gaps, bool(undetermined), scope_keys) if verdicts is not None else []
+    inventory = source_inventory(conn, scope_name, scope_keys) if verdicts is not None else []
     states = [c["state"] for c in coverage]
     program = {}
     for it in items:
@@ -530,6 +538,7 @@ def compose_with(conn: Connection, profile: dict, *, release: str = "") -> dict:
         "open_questions": open_questions,
         "evidence_gaps": gaps,
         "source_advice": source_advice,
+        "source_inventory": inventory,
         "unresolved_anchors": unresolved_anchors,
         "unmapped_obligations": {"count": unmapped_count, "sample": unmapped_sample,
                                  "note": "derived obligations in your jurisdictions not yet mapped to any activity — visible by design"},

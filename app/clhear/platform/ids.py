@@ -18,7 +18,7 @@ from app.clhear.models import L0_SCHEMA, metadata
 
 OBJECT_PREFIXES: dict[str, str] = {
     "OBL": "L2",  # obligation
-    "BLK": "L3",  # building block
+    "BLK": "L3",  # component
     "PRF": "L4",  # profile
     "ACT": "L5",  # activity
     "BLU": "L6",  # blueprint

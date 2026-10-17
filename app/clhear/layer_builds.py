@@ -73,7 +73,7 @@ def _tables(layer: str) -> list:
         "L4": [d.applies_to, d.licences, d.license_types],
         "L5": [d.activities, d.implies, d.operates, d.mitigates],
         "L6": [d.blueprints, d.blueprint_items],
-        "L7": [l7.enforcement_events, l7.enforcement_links, l7.risk_scores],
+        "L7": [l7.enforcement_events, l7.enforcement_links, l7.risk_scores, l7.stated_penalties, l7.penalty_links],
         "L8": [],
     }[layer]
 

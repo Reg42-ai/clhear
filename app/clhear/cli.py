@@ -255,6 +255,60 @@ def _load_json(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def cmd_recipe_apply(args) -> int:
+    from app.clhear import recipe
+
+    try:
+        result = recipe.apply(_engine(), _load_json(args.file))
+    except recipe.RecipeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print(result)
+    return 0 if all(v["valid"] for v in result["profiles"].values()) else 1
+
+
+def cmd_snapshot_create(args) -> int:
+    from app.clhear import snapshot
+
+    try:
+        result = snapshot.create(_engine(), args.release, args.out, licence=args.licence, profiles=args.profile or None,
+                                 title=args.title, notice=args.notice, make_zip=args.zip)
+    except snapshot.SnapshotError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+def cmd_snapshot_verify(args) -> int:
+    from app.clhear import snapshot
+
+    try:
+        result = snapshot.verify(args.path)
+    except snapshot.SnapshotError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print(result)
+    return 0 if result["valid"] else 1
+
+
+def cmd_snapshot_match(args) -> int:
+    from app.clhear import snapshot
+
+    payload = _load_json(args.profile)
+    attributes = payload.get("attributes", payload) if isinstance(payload, dict) else {}
+    try:
+        result = snapshot.match(args.path, attributes)
+    except snapshot.SnapshotError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if args.json:
+        _print(result)
+    else:
+        print(snapshot.describe_match(result))
+    return 0 if result["matches"] else 2
+
+
 def cmd_sources_add(args) -> int:
     from app.clhear import hoststore
     from app.clhear.first_run import SOURCE_KINDS
@@ -270,9 +324,11 @@ def cmd_sources_add(args) -> int:
         adapter, locator = "local_text", {"text": Path(args.text_file).read_text(encoding="utf-8")}
     row = hoststore.upsert_source(_engine(), args.key, {
         "adapter": adapter, "locator": locator, "name": args.name or args.key, "kind": args.kind,
-        "jurisdiction": args.jurisdiction or "", "issuer": args.issuer or "", "licence": "open"})
+        "jurisdiction": args.jurisdiction or "", "issuer": args.issuer or "", "reference": args.reference or "",
+        "licence": "open", "binding": args.binding})
     print(f"registered {row['key']} ({adapter}, kind {row['kind']}"
-          + (f", {row['jurisdiction']}" if row["jurisdiction"] else "") + ")")
+          + (f", {row['jurisdiction']}" if row["jurisdiction"] else "")
+          + ("" if row.get("binding") is None else (", binding" if row["binding"] else ", not binding")) + ")")
     return 0
 
 
@@ -280,7 +336,8 @@ def cmd_sources_list(_args) -> int:
     from app.clhear import hoststore
 
     for row in hoststore.list_sources(_engine()):
-        print(f"{row['key']:<24} {row['adapter']:<12} {row['kind']:<12} {row['jurisdiction'] or '-':<6} {row['name']}")
+        reference = f"  [{row['reference']}]" if row.get("reference") else ""
+        print(f"{row['key']:<24} {row['adapter']:<12} {row['kind']:<12} {row['jurisdiction'] or '-':<6} {row['name']}{reference}")
     return 0
 
 
@@ -295,13 +352,17 @@ def cmd_sources_test(args) -> int:
 
 
 def cmd_sources_advise(args) -> int:
-    from app.clhear.advisor import advise
-    from app.clhear.first_run import advice_text
+    from app.clhear.advisor import advise, source_inventory
+    from app.clhear.first_run import advice_text, inventory_text
 
     keys = scopes.get(args.scope)["sources"]
     with _engine().connect() as conn:
         advice = advise(conn, args.scope, keys)
-    _print(advice) if args.json else print(advice_text(advice))
+        inventory = source_inventory(conn, args.scope, keys)
+    if args.json:
+        _print(advice)
+    else:
+        print("Sources:\n" + inventory_text(inventory) + "\n\n" + advice_text(advice))
     return 0
 
 
@@ -423,10 +484,18 @@ def build_parser() -> argparse.ArgumentParser:
     where.add_argument("--url", help="a public https page or PDF")
     where.add_argument("--text-file", help="a local text file whose contents are stored with the source")
     add.add_argument("--kind", default="regulation",
-                     help="law, regulation, standard, guidance, form, agreement or enforcement (default regulation)")
+                     help="law, regulation, standard, guidance, form, agreement, enforcement or register "
+                          "(default regulation)")
     add.add_argument("--jurisdiction", default="", help="the jurisdiction the text is law in, e.g. US or EU")
     add.add_argument("--publisher", "--issuer", dest="issuer", default="", help="who publishes it, e.g. the regulator")
     add.add_argument("--name", default="")
+    add.add_argument("--reference", default="",
+                     help="the publisher's own reference for the text (its number or citation), so clauses that cite it resolve")
+    binds = add.add_mutually_exclusive_group()
+    binds.add_argument("--binding", dest="binding", action="store_true", default=None,
+                       help="the text binds the organisations it applies to: read it for obligations")
+    binds.add_argument("--not-binding", dest="binding", action="store_false",
+                       help="the text does not bind (voluntary guidance): no obligations, L8 reads it for practices")
     add.set_defaults(func=cmd_sources_add)
     sources.add_parser("list", help="list registered sources").set_defaults(func=cmd_sources_list)
     test = sources.add_parser("test", help="read a source and preview its clauses; stores nothing")
@@ -466,6 +535,33 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("--release", required=True)
     show.add_argument("--profile", required=True)
     show.set_defaults(func=cmd_blueprint_show)
+
+    recipe_cmd = sub.add_parser("recipe", help="sources, scope and profiles of a run in one file")\
+        .add_subparsers(dest="recipe_command", required=True)
+    recipe_apply = recipe_cmd.add_parser("apply", help="register a recipe's sources, scope and profiles")
+    recipe_apply.add_argument("file")
+    recipe_apply.set_defaults(func=cmd_recipe_apply)
+
+    snap = sub.add_parser("snapshot", help="publish a release's reference blueprints as files anyone can check and match")\
+        .add_subparsers(dest="snapshot_command", required=True)
+    snap_create = snap.add_parser("create", help="write a snapshot of a stored release")
+    snap_create.add_argument("--release", required=True)
+    snap_create.add_argument("--out", required=True, help="an empty or new folder")
+    snap_create.add_argument("--profile", action="append", default=[], help="a profile of the release (repeatable; default all)")
+    snap_create.add_argument("--licence", "--license", dest="licence", required=True,
+                             help="the licence the snapshot is published under, or 'not-for-publication'")
+    snap_create.add_argument("--title", default="")
+    snap_create.add_argument("--notice", default="", help="a sentence printed at the top of the snapshot's README")
+    snap_create.add_argument("--zip", action="store_true", help="also write <out>.zip")
+    snap_create.set_defaults(func=cmd_snapshot_create)
+    snap_verify = snap.add_parser("verify", help="check a snapshot's files against its manifest")
+    snap_verify.add_argument("path", help="a snapshot folder or .zip")
+    snap_verify.set_defaults(func=cmd_snapshot_verify)
+    snap_match = snap.add_parser("match", help="does an organisation profile match one of a snapshot's profiles?")
+    snap_match.add_argument("path", help="a snapshot folder or .zip")
+    snap_match.add_argument("--profile", required=True, help="a JSON file: {\"attributes\": {...}} or the attributes alone")
+    snap_match.add_argument("--json", action="store_true")
+    snap_match.set_defaults(func=cmd_snapshot_match)
 
     serve = sub.add_parser("serve", help="serve the HTTP API on this machine")
     serve.add_argument("--host", default=os.environ.get("CLHEAR_BIND_HOST", "127.0.0.1"))

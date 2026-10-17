@@ -18,6 +18,8 @@ A run over your own texts calls a model. Pick one provider. `clhear doctor` exit
 | `openai_compatible` | `OPENAI_BASE_URL`, `OPENAI_API_KEY` | `gpt-4o` |
 | `bedrock` | `BEDROCK_MODEL_ID` or `CLHEAR_LLM_MODEL`, and the usual AWS credentials | none |
 
+On Bedrock, give the model id AWS lists for your Region. Where AWS lists no in-Region id for it, give its cross-Region id, such as `us.anthropic.claude-opus-5`.
+
 `CLHEAR_LLM_MODEL` overrides the model. `clhear doctor --check-model` makes one small real call and exits non-zero if the key, model or network is wrong: run it before the first build.
 
 `url` sources always fetch live. The publisher adapters (`eur_lex`, `uk_legislation`, `govinfo_us`) need `CLHEAR_HTTP_MODE=live`; the default, `replay`, only reads recorded test fixtures.

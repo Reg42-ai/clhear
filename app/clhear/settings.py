@@ -105,9 +105,9 @@ class Settings(BaseSettings):
     clhear_service_tokens: str = ""
     clhear_service_token_file: str = ""
     clhear_bind_host: str = "127.0.0.1"
-    clhear_engine_version: str = "0.2.0"
+    clhear_engine_version: str = "0.2.1"
     clhear_api_version: str = "v1"
-    clhear_schema_revision: str = "0042"
+    clhear_schema_revision: str = "0046"
     clhear_image_digest: str = ""
 
     # --- community accounts & contributions (Phase C) ---

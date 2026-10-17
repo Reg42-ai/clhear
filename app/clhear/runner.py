@@ -40,7 +40,10 @@ def _scope_advice(engine: Engine) -> list[dict]:
 
 
 def _live(engine: Engine, llm, profiles: list[dict]) -> dict:
+    from app.clhear import snapshot
+
     _check_profiles(engine, profiles)
+    calls_before = snapshot.last_call_id(engine)
     report = scope_build.build(
         engine, llm,
         profiles=[{"name": item.get("name") or "", "attributes": item.get("attributes") or {}} for item in profiles],
@@ -66,6 +69,8 @@ def _live(engine: Engine, llm, profiles: list[dict]) -> dict:
         "failed_sources": report.get("failed_sources") or [],
         "lineage": report.get("lineage") or {},
         "source_advice": _scope_advice(engine),
+        # What a snapshot of this release needs beyond the blueprints (app.clhear.snapshot).
+        "snapshot_basis": snapshot.capture(engine, scopes.source_keys(), calls_after=calls_before),
     }
 
 
@@ -124,7 +129,8 @@ def _execute(engine: Engine, run: dict, *, sender: Callable[[str, bytes, dict], 
         payload = _plain({"profiles": built["blueprints"], "layers": built["layers"],
                           "sources": built.get("sources") or {}, "failed_sources": built.get("failed_sources") or [],
                           "lineage": built.get("lineage") or {},
-                          "source_advice": built.get("source_advice") or []})
+                          "source_advice": built.get("source_advice") or [],
+                          **({"snapshot_basis": built["snapshot_basis"]} if built.get("snapshot_basis") else {})})
         release = hoststore.save_release(engine, scope=run["scope"], run_id=run["run_id"], blueprints=payload)
         finished = hoststore.finish_run(engine, run["run_id"], status="succeeded", release_id=release["id"])
         notify.emit(engine, "run.finished", {"run_id": run["run_id"], "release_id": release["id"]}, sender=sender)

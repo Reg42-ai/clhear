@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy.engine import Engine
 
-SOURCE_KINDS = ("law", "regulation", "standard", "guidance", "form", "agreement", "enforcement")
+from app.clhear.l1.models import SOURCE_KINDS  # noqa: F401  (the CLI checks kinds here)
 
 
 def preview(engine: Engine, key: str) -> dict:
@@ -95,8 +95,30 @@ def advice_text(advice: list[dict]) -> str:
             by = f", published by {item['published_by']}" if item.get("published_by") else ""
             lines.append(f"  + {item['source']}  -> register as kind \"{item['register_as']}\"{by}")
             lines.append(f"      why: {item['why']}")
+            for quote in (item.get("cited_by") or [])[:3]:
+                lines.append(f"      cited by {quote['source_key']} {quote['clause_ref']}: \"{quote['quote']}\"")
         if a.get("note"):
             lines.append(f"  note: {a['note']}")
+    return "\n".join(lines)
+
+
+def inventory_text(inventory: list[dict]) -> str:
+    """The sources in scope and the texts they cite, each with its status, as plain text."""
+    if not inventory:
+        return "No source in scope."
+    lines = []
+    for e in inventory:
+        if e.get("cited_as"):
+            citing = ", ".join(f"{q['source_key']} {q['clause_ref']}" for q in e.get("cited_by") or [])
+            what = f"\"{e['cited_as']}\" cited by {citing}"
+            if e["status"] == "unresolved":
+                what += f"; register it as kind \"{e['register_as']}\""
+            else:
+                what += f"; registered as {e['source_key']}: {e.get('reason', '')}"
+        else:
+            what = f"{e['source_key']} ({e.get('kind') or '-'}) {e.get('name') or ''}".rstrip()
+            what += f": {e['clauses']} clauses" if e["status"] == "derived" else f": {e.get('reason', '')}"
+        lines.append(f"- {e['status']:<10} {what}")
     return "\n".join(lines)
 
 
@@ -121,6 +143,9 @@ def blueprint_text(bp: dict) -> str:
         lines.append("\nOpen questions (answer them in the organisation profile, then run again):")
         for q in bp["open_questions"]:
             lines.append(f"- {q['ask']}  ({len(q['duties'])} obligations)")
+    if bp.get("source_inventory"):
+        lines.append("\nSources (derived: read and built; pending: registered, not built; unresolved: cited, not registered):")
+        lines.append(inventory_text(bp["source_inventory"]))
     if bp.get("source_advice"):
         lines.append("\nSources to add:")
         lines.append(advice_text(bp["source_advice"]))

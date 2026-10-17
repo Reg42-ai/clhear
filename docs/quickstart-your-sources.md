@@ -32,13 +32,16 @@ The kind decides which layer reads the text:
 
 | Kind | Use it for | Layers that read it |
 | --- | --- | --- |
-| `law` | Acts and statutes, including their definitions sections | L2 obligations, L4 roles and licences |
-| `regulation` | Implementing rules, regulations, licensing and registration rules | L2 obligations, L4 roles and licences |
+| `law` | Acts and statutes, including their definitions and penalty sections | L2 obligations, L4 roles and licences, L7 stated penalties |
+| `regulation` | Implementing rules, regulations, licensing and registration rules | L2 obligations, L4 roles and licences, L7 stated penalties |
 | `standard` | Recognised standards and codes of practice the texts refer to | L3 components and their characteristics |
 | `guidance` | Regulator guidance, FAQs and Q&As, bulletins, inspection findings, court decisions, official journals | L3 components, L8 practices |
 | `form` | Official forms and templates | L3 components (documents to keep) |
 | `agreement` | Model contracts and agreements the texts require | L3 components |
-| `enforcement` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements | L7 enforcement records and risk |
+| `enforcement` | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements | L7 enforcement records and risk; L8 practices from the remediation they order (never read for obligations) |
+| `register` | Official registers of licensed or authorised entities, lists of licence categories | L4 licence types (never read for obligations) |
+
+`--reference` is the publisher's own reference for the text, such as its number or citation ("Act No. 4 of 2019", "Regulation (AB) 2030/17"). When another text in scope cites it by that reference or by its name, the reference resolves to it.
 
 `--jurisdiction` is the jurisdiction the text applies in. It becomes the first applicability condition of every obligation from that text. `--publisher` is who publishes the text (the lawmaker, regulator, court or standards body); the advice in step 7 asks for further sources from the same publisher.
 
@@ -80,7 +83,7 @@ This lists, each with the words it was read from:
 - the **jurisdictions** your sources declare;
 - the **roles**: the addressees the obligations name ("covered person", "operator");
 - the **conditions**: the obligations' own "where / if / unless" clauses about the addressee;
-- the **licence types** the texts establish;
+- the **licence types** the texts and registers establish: the permitted values of your profile's `licences`;
 - the **candidate organisation profiles**: one per role and one per licence type, with the conditions still to answer. A candidate is only ever built from roles and licences quoted from your texts.
 
 Add `--json` for the same as data, including each question's quotes.
@@ -105,18 +108,21 @@ clhear blueprint show --release <release_id> --profile my-company
 clhear sources advise --scope my-rules
 ```
 
+The output starts with the **source inventory**: every source in the scope and every text their clauses cite, each marked `derived` (read and built), `pending` (registered but not built, or registered but not in this scope) or `unresolved` (cited but not registered). A missing source is thereby told apart from one that does not apply.
+
 For every layer that could not derive its records, the advice says what is missing, which kinds of official source would let the layer derive them, and the kind to register each as:
 
 | Layer | When | Add |
 | --- | --- | --- |
 | L1 Sources | A source produced no text | The official publication itself, as HTML or a PDF with a text layer |
+| L1 Sources | A clause cites a text the scope does not hold ("section 2 of the Harbour Lighting Act 2019", "under Part 7") | That text, named as the clauses word it, with the clauses that cite it and the kind to register it as |
 | L2 Obligations | The texts were read, but none states an obligation | The binding act or regulation in full, not a summary or an index |
 | L3 Components | An obligation names no component to put in place, or a characteristic (cadence, owner, retention) is not stated | Implementing guidance, recognised standards, codes of practice |
-| L4 Applicability | No licensing regime is in scope, or a role is used but not defined | Licensing, registration or scope-of-practice rules; the definitions section; coverage guidance |
+| L4 Applicability | No licensing regime is in scope, or a role is used but not defined | Licensing, registration or scope-of-practice rules; the official register of licensed entities or licence categories (kind `register`); the definitions section; coverage guidance |
 | L4 Applicability | Obligations are undetermined | Not a missing source: answer the open questions |
 | L5 Compliance activities | The text does not say who performs the obligation | Rules or guidance that designate a responsible officer or function; governance provisions |
-| L7 Risk scoring | No enforcement source is in scope, so no obligation has enforcement events | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements |
-| L8 Practices | No guidance source is in scope, so no component has a guidance-derived practice | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals |
+| L7 Risk scoring | No enforcement source is in scope, so no obligation has enforcement events (risk rests only on the penalties the texts state) | Enforcement actions, consent orders, settlements, penalty notices, warning letters, resolution agreements; the act's penalty provisions, if they are not in scope |
+| L8 Practices | No guidance or enforcement source is in scope, so no component has a practice | FAQs and official Q&As, guidance and bulletins, inspection findings, court and tribunal decisions, official journals; enforcement actions or resolution agreements that order remediation |
 
 News coverage can point you to one of these official sources, but it is never used as evidence. Register the official source it refers to.
 

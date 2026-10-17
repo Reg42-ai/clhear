@@ -181,7 +181,7 @@ def _alias_index(conn: Connection) -> list[tuple[str, tuple[str, ...]]]:
     # A scoped corpus names instruments only by what its own L1 sources print.
     aliases: dict[str, set[str]] = {} if active() else {k: set(v) for k, v in STATIC_ALIASES.items()}
     for r in conn.execute(sa.select(sources.c.key, sources.c.short_name, sources.c.instrument, sources.c.name, sources.c.kind)):
-        if r.kind == "enforcement":
+        if r.kind in ("enforcement", "register"):
             continue
         for name in (r.short_name, r.instrument, r.name):
             name = (name or "").strip()

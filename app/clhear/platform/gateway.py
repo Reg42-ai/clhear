@@ -99,6 +99,38 @@ BEDROCK_PRICING: dict[str, tuple[float, float]] = {
 # Rungs counted against the monthly premium cap (settings.clhear_frontier_monthly_cap_usd).
 PREMIUM_MODELS: frozenset[str] = frozenset({CLAUDE_OPUS_5})
 _DEFAULT_PRICING = (3.00, 15.00)
+# Bedrock names one model by its base id or by a cross-Region id (AWS: "inference profile"),
+# which prefixes the geography it routes in ("us.", "eu.", "global."). In some Regions a model
+# is invoked only through a cross-Region id. AWS's ids for the Claude 5 models carry no version
+# suffix ("anthropic.claude-opus-5"); the frozen ids above do.
+BEDROCK_PROFILE_PREFIXES = ("global", "us-gov", "us", "eu", "apac", "au", "ca", "in", "jp")
+_PROFILE_PREFIX_RE = re.compile(r"^(?:%s)\." % "|".join(re.escape(p) for p in BEDROCK_PROFILE_PREFIXES))
+_VERSION_SUFFIX_RE = re.compile(r"-v\d+(?::\d+)?$")
+
+
+def model_key(model: str) -> str:
+    """One key per Bedrock model: its id without a cross-Region prefix or a version suffix."""
+    return _VERSION_SUFFIX_RE.sub("", _PROFILE_PREFIX_RE.sub("", (model or "").strip()))
+
+
+_PREMIUM_KEYS = frozenset(model_key(m) for m in PREMIUM_MODELS)
+
+
+def is_premium(model: str) -> bool:
+    """A premium model, named by its base id or by any of its cross-Region ids."""
+    return model_key(model) in _PREMIUM_KEYS
+
+
+def premium_model_ids() -> list[str]:
+    """Every id under which the call ledger can hold a premium model."""
+    ids: set[str] = set()
+    for model in PREMIUM_MODELS:
+        for base in (model, model_key(model)):
+            ids.add(base)
+            ids.update(f"{prefix}.{base}" for prefix in BEDROCK_PROFILE_PREFIXES)
+    return sorted(ids)
+
+
 _THINK_RE = re.compile(r"<think>.*?</think>", re.S | re.I)
 _THINK_OPEN_RE = re.compile(r"<think>.*", re.S | re.I)
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.I)
@@ -132,8 +164,13 @@ ANTHROPIC_PRICING: dict[str, tuple[float, float]] = {
 }
 
 
+_BEDROCK_PRICING_BY_KEY: dict[str, tuple[float, float]] = {model_key(m): p for m, p in BEDROCK_PRICING.items()}
+
+
 def price_for(model: str) -> tuple[float, float]:
-    return ANTHROPIC_PRICING.get(model) or BEDROCK_PRICING.get(model, _DEFAULT_PRICING)
+    """USD per 1M tokens (input, output). A Bedrock model is priced the same under each of its ids."""
+    return (ANTHROPIC_PRICING.get(model) or BEDROCK_PRICING.get(model)
+            or _BEDROCK_PRICING_BY_KEY.get(model_key(model), _DEFAULT_PRICING))
 
 
 def _claude_family(model: str) -> str:
@@ -606,7 +643,7 @@ class Gateway:
         """Month-to-date spend on premium rungs (Opus-class) — the hard monthly cap."""
         query = sa.select(sa.func.coalesce(sa.func.sum(llm_calls.c.cost_usd), 0)).where(
             llm_calls.c.created_at >= _month_start_utc()
-        ).where(sa.or_(llm_calls.c.model.in_(sorted(PREMIUM_MODELS)), llm_calls.c.tier == "frontier"))
+        ).where(sa.or_(llm_calls.c.model.in_(premium_model_ids()), llm_calls.c.tier == "frontier"))
         with self._engine.connect() as conn:
             return float(conn.execute(query).scalar_one())
 
@@ -643,7 +680,7 @@ class Gateway:
                 raise SpendCapExceeded(f"fleet '{fleet}' daily cap ${self._fleet_cap} reached — hard stop")
             if self._spend_today() >= self._global_cap:
                 raise SpendCapExceeded(f"global daily cap ${self._global_cap} reached — hard stop")
-            if (model in PREMIUM_MODELS or tier == "frontier") and self.premium_spend_month() >= self._frontier_month_cap:
+            if (is_premium(model) or tier == "frontier") and self.premium_spend_month() >= self._frontier_month_cap:
                 raise SpendCapExceeded(
                     f"premium monthly cap ${self._frontier_month_cap} reached — hard stop"
                 )

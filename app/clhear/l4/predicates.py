@@ -8,7 +8,10 @@ text itself raises, with the quote it came from:
 * ``jurisdiction`` — the source declares a jurisdiction: ``{"jurisdictions": "EU"}``;
 * ``subject``      — the duty names who it binds, and that is not "every
   organisation" / "any person": ``{"roles": ["controller", "processor"]}``
-  (any of them);
+  (any of them). A party is an organisation ("Are you a 'member'?") or a person
+  or function inside one ("Does your organisation have a 'Supervisory
+  Analyst'?"). A thing the duty is about ("Communications may not ...", "The
+  illustration must ...") is not a party and raises no question;
 * ``condition``    — the duty's own "where / if / unless" clause is about the
   addressee ("where an organisation processes personal data"):
   ``{"condition": "COND-…", "fact": "processes personal data", "expect": true}``.
@@ -37,7 +40,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Connection, Engine
 
 from app.clhear.derived_models import applies_to, obligations
-from app.clhear.l2.registry import PRONOUNS, binds_subject, is_universal
+from app.clhear.l2.registry import PRONOUNS, binds_subject, head_phrase, is_universal, party_of, singular
 from app.clhear.platform import record
 from app.clhear.platform.ids import next_id
 
@@ -55,6 +58,7 @@ _CONNECTIVE = re.compile(
 _DETERMINERS = re.compile(r"^(?:(?:a|an|the|each|every|any|all|such|its|their)\s+)+", re.I)
 _SPLIT_SUBJECT = re.compile(r"\s*(?:,|\band/or\b|\band\b|\bor\b)\s*", re.I)
 _RELATIVE = re.compile(r"\s+(?P<rel>(?:who|that|which)\s+.+)$", re.I)
+_RELATIVE_WORD = re.compile(r"^(?:which|who|whom|whose|that)$", re.I)
 _QUALIFIER = re.compile(r"^(?:applicable|appropriate|possible|necessary|relevant|practicable|required|any)\b", re.I)
 
 
@@ -97,30 +101,58 @@ def _quote_in(quotes: list[dict], part: str) -> list[dict]:
     return out
 
 
+def _label(head: str, first: bool) -> str:
+    """The party's name as the text writes it, in the singular: "Members" -> "member",
+    "Supervisory Analysts" -> "Supervisory Analyst"."""
+    words = head.split()
+    if not words:
+        return head
+    last = words[-1]
+    one = singular(last)
+    words[-1] = (one[:1].upper() + one[1:]) if last[:1].isupper() else one
+    if first and len(words) == 1 and words[0][:1].isupper() and words[0][1:].islower():
+        words[0] = words[0].lower()  # capitalised only because it opens the sentence
+    return " ".join(words)
+
+
 def addressee_roles(ob: dict) -> tuple[list[dict], list[dict]]:
     """(roles, relative-clause conditions) the duty's subject names.
 
     "The controller and the processor" -> two roles, either binds. "Every
     organisation" and pronouns name no role. A passive duty's subject is what
-    the duty is about ("personal data shall be kept ..."), not who it binds."""
+    the duty is about ("personal data shall be kept ..."), not who it binds; so
+    is a thing ("Communications may not predict performance"). A person or
+    function ("the Supervisory Analyst") is a role the organisation has."""
     subject = " ".join((ob.get("subject") or "").split())
     if not subject or not binds_subject(ob) or subject.lower() in PRONOUNS:
         return [], []
     quotes = ((ob.get("evidence") or {}).get("subject") or []) if isinstance(ob.get("evidence"), dict) else []
-    roles, extra = [], []
+    roles, extra, parties = [], [], []
     # The relative clause first ("a firm that holds client money and deals on its own account"):
     # its "and" / "or" belong to the condition, not to a list of roles.
-    heads = subject
+    heads, rel = subject, ""
     found = _RELATIVE.search(subject)
     if found:
         heads, rel = subject[:found.start()], found.group("rel")
+    for i, part in enumerate(p for p in _SPLIT_SUBJECT.split(heads) if p.strip()):
+        head = _DETERMINERS.sub("", part).strip()
+        if not head or _CONNECTIVE.match(head) or _QUALIFIER.match(head) or _RELATIVE_WORD.match(head):
+            continue  # a parenthetical ("where applicable") or a relative pronoun, not a noun phrase
+        party = party_of(head)
+        parties.append(party)
+        if party not in ("organisation", "person"):
+            continue  # anyone, or a thing the duty is about
+        words, post = head_phrase(head)
+        label = _label(words, first=subject.startswith(part.strip()))
+        roles.append({"role": norm(label), "label": label, "party": party, "quotes": _quote_in(quotes, words)})
+        if party == "organisation" and re.match(r"^\w+ed\b", post):
+            # "Firms registered under the Investment Advisers Act": which organisations it binds.
+            extra.append({"fact": post, "text": post, "expect": True, "quotes": _quote_in(quotes, post)})
+    # A relative clause narrows who is bound when it is about an organisation or anyone
+    # ("a firm that holds client money"); about a thing or a person it does not.
+    if rel and any(p in ("organisation", "universal") for p in parties):
         fact = re.sub(r"^(?:who|that|which)\s+", "", rel, flags=re.I)
         extra.append({"fact": fact, "text": rel, "expect": True, "quotes": _quote_in(quotes, rel)})
-    for part in [p for p in _SPLIT_SUBJECT.split(heads) if p.strip()]:
-        head = _DETERMINERS.sub("", part).strip()
-        if not head or is_universal(head) or _CONNECTIVE.match(head) or _QUALIFIER.match(head):
-            continue  # a parenthetical ("where applicable"), not a noun phrase
-        roles.append({"role": norm(head), "label": head, "quotes": _quote_in(quotes, head)})
     return roles, extra
 
 
@@ -143,21 +175,28 @@ def _about_addressee(rest: str, ob: dict) -> tuple[bool, str, str]:
     """(is the clause about the addressee?, the fact it states, the addressee it names).
 
     It is when it opens with a pronoun, with the duty's own subject, or with a
-    word that stands for anyone ("an organisation", "a person"). When the duty's
-    subject is itself a pronoun ("where a covered entity maintains ..., it
-    must ..."), the clause's noun phrase is the addressee."""
+    word that stands for anyone ("an organisation", "a person"), and the duty
+    binds an organisation. A clause about a thing ("if the illustration covers
+    ...") or about a person inside the organisation ("if an associated person
+    recommends ...") says when the duty is performed, not whether it applies.
+    When the duty's subject is itself a pronoun ("where a covered entity
+    maintains ..., it must ..."), the clause's noun phrase is the addressee."""
     words = rest.split()
     if not words:
         return False, "", ""
-    if words[0].lower() in PRONOUNS:
-        return True, " ".join(words[1:]), ""
-    body = _DETERMINERS.sub("", rest)
     subject = _DETERMINERS.sub("", " ".join((ob.get("subject") or "").split()))
-    if subject and subject.lower() not in PRONOUNS and body.lower().startswith(subject.lower() + " "):
-        return True, body[len(subject):].strip(), ""
+    pronoun = not subject or subject.lower() in PRONOUNS
+    party = "pronoun" if pronoun else party_of(subject)
+    if words[0].lower() in PRONOUNS:
+        return party in ("pronoun", "organisation", "universal"), " ".join(words[1:]), ""
+    body = _DETERMINERS.sub("", rest)
+    if not pronoun and body.lower().startswith(subject.lower() + " "):
+        return party in ("organisation", "universal"), body[len(subject):].strip(), ""
     noun, fact = _split_np(body)
-    if noun and (is_universal(noun) or subject.lower() in PRONOUNS):
-        return True, fact, "" if is_universal(noun) else noun
+    if noun and is_universal(noun):
+        return party in ("pronoun", "organisation", "universal"), fact, ""
+    if noun and pronoun and party_of(noun) in ("organisation", "person"):
+        return True, fact, noun
     return False, "", ""
 
 
@@ -180,7 +219,28 @@ def conditions_of(ob: dict) -> tuple[list[dict], list[dict]]:
     return questions, triggers
 
 
-def grounded_predicates(ob: dict, jurisdiction: str) -> list[dict]:
+def party_aliases(rows: list[dict]) -> dict[str, tuple[str, str]]:
+    """{role key: (key, label) it is merged into} for variants of one person or function in
+    these duties: "appropriately qualified registered principal" reads as "appropriately
+    qualified principal" when both occur. Same head noun, and one's words within the other's."""
+    labels: dict[str, str] = {}
+    for ob in rows:
+        for r in addressee_roles(ob)[0]:
+            if r["party"] == "person":
+                labels.setdefault(r["role"], r["label"])
+    out = {}
+    for key in labels:
+        words, best = set(key.split()), key
+        for other in labels:
+            if (other != key and other.split()[-1] == key.split()[-1] and set(other.split()) < words
+                    and len(other) < len(best)):
+                best = other
+        if best != key:
+            out[key] = (best, labels[best])
+    return out
+
+
+def grounded_predicates(ob: dict, jurisdiction: str, aliases: dict | None = None) -> list[dict]:
     """The edges an obligation should have (no DB writes)."""
     out: list[dict] = []
     if jurisdiction:
@@ -192,13 +252,17 @@ def grounded_predicates(ob: dict, jurisdiction: str) -> list[dict]:
     questions, _ = conditions_of(ob)
     for q in questions:
         if q.get("addressee"):  # "where a covered entity ..., it must": the clause names who is bound
-            roles.append({"role": norm(q["addressee"]), "label": q["addressee"],
+            roles.append({"role": norm(q["addressee"]), "label": q["addressee"], "party": party_of(q["addressee"]),
                           "quotes": _quote_in(q["quotes"], q["addressee"])})
+    for r in roles:
+        if r["role"] in (aliases or {}):
+            r["role"], r["label"] = aliases[r["role"]]
     if roles:
         out.append({"predicate": {"roles": sorted({r["role"] for r in roles})}, "basis": "subject",
                     "rationale": ob.get("subject") or "",
                     "evidence": {"subject": [q for r in roles for q in r["quotes"]],
-                                 "labels": {r["role"]: r["label"] for r in roles}}})
+                                 "labels": {r["role"]: r["label"] for r in roles},
+                                 "parties": {r["role"]: r.get("party") or "organisation" for r in roles}}})
     for q in questions + relative:
         out.append({"predicate": {"condition": condition_id(q["fact"]), "fact": norm(q["fact"]), "expect": q["expect"]},
                     "basis": "condition", "rationale": q["text"],
@@ -229,10 +293,13 @@ def _write_edge(conn: Connection, ob: dict, edge: dict, trail: str) -> str:
     return eid
 
 
-def sync_obligation(conn: Connection, ob: dict, jurisdiction: str, *, reason: str = "l4.predicates") -> dict:
+def sync_obligation(conn: Connection, ob: dict, jurisdiction: str, *, reason: str = "l4.predicates",
+                    aliases: dict | None = None) -> dict:
     """Bring one obligation's edges in line with its words: add missing, re-stamp
     those whose text moved, close those the reading no longer produces."""
-    wanted = {_pkey(e["predicate"]): e for e in grounded_predicates(ob, jurisdiction)}
+    if aliases is None:
+        aliases = party_aliases(_live_obligations(conn))
+    wanted = {_pkey(e["predicate"]): e for e in grounded_predicates(ob, jurisdiction, aliases)}
     ref = ob.get("stable_id") or ob["id"]
     counts = {"added": 0, "unchanged": 0, "restamped": 0, "invalidated": 0}
     trail: str | None = None
@@ -247,7 +314,7 @@ def sync_obligation(conn: Connection, ob: dict, jurisdiction: str, *, reason: st
 
     for e in _live_edges(conn, ob["id"]):
         key = _pkey(e["predicate"])
-        if key not in wanted or e["method"] != METHOD:
+        if key not in wanted or e["method"] != METHOD or (e.get("evidence") or {}) != wanted[key]["evidence"]:
             record.invalidate(conn, applies_to, applies_to.c.id == e["id"], why=_trail(),
                               reason="no longer read from the obligation")
             counts["invalidated"] += 1
@@ -294,9 +361,10 @@ def extract_predicates(engine: Engine, llm=None, *, source_key: str | None = Non
     totals = {"obligations": 0, "added": 0, "unchanged": 0, "restamped": 0, "invalidated": 0, "unconditional": 0}
     with engine.begin() as conn:
         jurisdiction_of = _source_jurisdictions(conn)
+        aliases = party_aliases(_live_obligations(conn))
         for ob in _live_obligations(conn, source_key, limit):
             totals["obligations"] += 1
-            counts = sync_obligation(conn, ob, jurisdiction_of.get(ob["source_key"], ""))
+            counts = sync_obligation(conn, ob, jurisdiction_of.get(ob["source_key"], ""), aliases=aliases)
             for k in ("added", "unchanged", "restamped", "invalidated"):
                 totals[k] += counts[k]
             if not _live_edges(conn, ob["id"]):
@@ -415,6 +483,57 @@ def obligations_for_profile(engine: Engine, profile_or_attributes) -> dict:
     return {"profile_id": pid, "attributes": attributes, "count": len(items), "obligations": items}
 
 
+# ----------------------------------------------------------------- asking in plain words
+
+
+def _with_article(label: str) -> str:
+    return f"{'an' if label[:1].lower() in 'aeiou' else 'a'} '{label}'"
+
+
+def role_question(labels: list[str], parties: list[str]) -> str:
+    """"Are you a 'member'?" for an organisation; "Does your organisation have a
+    'Supervisory Analyst'?" for a person or function inside one."""
+    names = " or ".join(_with_article(n) for n in labels)
+    if parties and all(p == "person" for p in parties):
+        return f"Does your organisation have {names}?"
+    return f"Are you {names}?"
+
+
+_MODALS = frozenset({"can", "will", "may", "must", "should", "shall", "could", "would"})
+
+
+def condition_question(fact: str, text: str = "") -> str:
+    """The clause's fact as a question about the organisation, in the clause's words:
+    "processes personal data on a large scale" -> "Does your organisation process personal
+    data on a large scale?". Falls back to the clause itself when its fact does not open
+    with a verb."""
+    words = " ".join((fact or "").split()).rstrip(" ,;:.?").split()
+    fallback = f"Does this apply to your organisation: {' '.join((text or fact or '').split()).rstrip(' ,;:.?')}?"
+    if not words:
+        return fallback
+    first, rest = words[0].lower(), " ".join(words[1:])
+    if first in ("is", "are"):
+        return f"Is your organisation {rest}?"
+    if first in ("was", "were"):
+        return f"Was your organisation {rest}?"
+    if first in ("has", "have"):
+        if len(words) > 1 and re.match(r"^\w+(?:ed|en|wn|ne|un)$", words[1], re.I):
+            return f"Has your organisation {rest}?"  # "has filed a draft version"
+        return f"Does your organisation have {rest}?"
+    if first in ("does", "do"):
+        return f"Does your organisation {rest}?"
+    if first in _MODALS:
+        return f"{first.capitalize()} your organisation {rest}?"
+    if len(first) > 3 and first.endswith("ed"):
+        return f"Is your organisation {' '.join(words)}?"
+    if len(first) > 2 and first.endswith("s") and not first.endswith(("ss", "us", "is")):
+        # "holds client money and deals on its own account" -> "hold ... and deal on ..."
+        rest = re.sub(r"\b(and|or)\s+(\w+?s)\s+(?=(?:a|an|the|its|their|on|in|with|to|for|from|any|all)\b)",
+                      lambda m: f"{m.group(1)} {singular(m.group(2))} ", rest)
+        return f"Does your organisation {singular(first)} {rest}?".replace(" ?", "?")
+    return fallback
+
+
 # ----------------------------------------------------------------- the questions a scope raises
 
 
@@ -438,14 +557,18 @@ def questions(conn: Connection, source_keys) -> dict:
             pred, found = e["predicate"] or {}, e.get("evidence") or {}
             if "roles" in pred:
                 labels = found.get("labels") or {}
+                parties = found.get("parties") or {}
                 for role in pred["roles"]:
-                    slot = roles.setdefault(role, {"role": role, "label": labels.get(role, role), "duties": [],
-                                                   "quotes": []})
+                    party = parties.get(role) or "organisation"
+                    slot = roles.setdefault(role, {"role": role, "label": labels.get(role, role), "party": party,
+                                                   "ask": role_question([labels.get(role, role)], [party]),
+                                                   "duties": [], "quotes": []})
                     slot["duties"].append(ob["stable_id"] or oid)
                     slot["quotes"].extend(q for q in found.get("subject") or [] if role == norm(q["quote"]))
             elif "condition" in pred:
                 slot = conditions.setdefault(pred["condition"], {
                     "id": pred["condition"], "fact": found.get("fact") or pred.get("fact"), "text": e["rationale"],
+                    "ask": condition_question(found.get("fact") or pred.get("fact") or "", e["rationale"]),
                     "duties": [], "quotes": []})
                 slot["duties"].append(ob["stable_id"] or oid)
                 slot["quotes"].extend(found.get("condition") or [])

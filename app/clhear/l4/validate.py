@@ -58,8 +58,9 @@ FIELDS = {
     },
     "licences": {
         "type": "list of strings",
-        "effect": "The licence, registration or authorisation types you hold, from those the texts in scope "
-                  "establish. Listed for your record; a duty addressed to a licence holder is asked as a role.",
+        "effect": "The licence, registration or authorisation types you hold, from those the texts and registers "
+                  "in scope establish (for a scope: permitted_values). Listed for your record; a duty addressed to "
+                  "a licence holder is asked as a role.",
     },
 }
 RETIRED_FIELDS = frozenset({"authorisations", "products", "customer_base", "channels", "data_footprint",
@@ -130,7 +131,8 @@ def check_answers(asked: dict, attributes: dict) -> list[dict]:
 
 
 def licence_questions(conn: Connection, source_keys) -> list[dict]:
-    """Licence types quoted from the licensing clauses of the texts in scope."""
+    """Licence types quoted from the licensing clauses and registers in scope: the
+    permitted values of the profile's ``licences``."""
     keys = set(source_keys or [])
     out = []
     for row in conn.execute(sa.select(license_types).where(license_types.c.status != "retired")
@@ -139,6 +141,7 @@ def licence_questions(conn: Connection, source_keys) -> list[dict]:
         if keys and not any(isinstance(a, dict) and a.get("source_key") in keys for a in anchors):
             continue
         out.append({"id": row["id"], "name": row["name"], "jurisdiction": row["jurisdiction"],
+                    "basis": "register" if row["generated_by"] == "l4.registers" else "licensing clause",
                     "quotes": [a for a in anchors if isinstance(a, dict)]})
     return out
 
@@ -155,6 +158,8 @@ def profile_schema(conn: Connection, scope: str | None = None) -> dict:
     keys = scopes.get(scope)["sources"]
     asked = questions(conn, keys)
     asked["licences"] = licence_questions(conn, keys)
+    permitted = sorted({lic["name"] for lic in asked["licences"]})
+    fields = [{**f, "permitted_values": permitted} if f["key"] == "licences" else f for f in fields]
     built = bool(asked["roles"] or asked["conditions"] or asked["licences"]) or _has_obligations(conn, keys)
     return {"fields": fields, "scope": scope, "questions": asked, "candidates": candidate_profiles(asked),
             **({} if built else {"note": "This scope has not been built yet: run it once to derive its questions."})}

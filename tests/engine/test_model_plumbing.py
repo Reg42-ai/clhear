@@ -128,3 +128,72 @@ def test_json_is_read_from_the_first_object_even_with_trailing_prose():
 def test_provider_errors_are_classified():
     assert ProviderError("x").retryable is True
     assert ProviderError("x", retryable=False).retryable is False
+
+
+# Bedrock: AWS names Claude Opus 5 "anthropic.claude-opus-5" and invokes it in us-east-1 only
+# through a cross-Region id ("us." or "global."): Amazon Bedrock model card, read 17 Oct 2026.
+BEDROCK_OPUS_5_IDS = ["anthropic.claude-opus-5", "us.anthropic.claude-opus-5", "global.anthropic.claude-opus-5",
+                      "eu.anthropic.claude-opus-5", "us.anthropic.claude-opus-5-v1:0"]
+
+
+@pytest.mark.parametrize("model", BEDROCK_OPUS_5_IDS)
+def test_a_bedrock_model_is_one_model_under_each_of_its_ids(model):
+    from app.clhear.platform.task_classes import CLAUDE_OPUS_5
+
+    assert gw.model_key(model) == gw.model_key(CLAUDE_OPUS_5) == "anthropic.claude-opus-5"
+    assert gw.price_for(model) == gw.BEDROCK_PRICING[CLAUDE_OPUS_5]
+    assert gw.is_premium(model) and model in gw.premium_model_ids()
+
+
+def test_other_models_keep_their_own_price_and_are_not_premium():
+    from app.clhear.platform.task_classes import CLAUDE_SONNET_5
+
+    assert gw.price_for("us.anthropic.claude-sonnet-5") == gw.BEDROCK_PRICING[CLAUDE_SONNET_5]
+    assert gw.price_for("claude-opus-5") == gw.ANTHROPIC_PRICING["claude-opus-5"]
+    assert not gw.is_premium("claude-opus-5") and not gw.is_premium("us.anthropic.claude-sonnet-5")
+    assert gw.price_for("someone.unknown-model") == gw._DEFAULT_PRICING
+
+
+class Converse:
+    """A bedrock-runtime client that answers every Converse call."""
+
+    def __init__(self):
+        self.calls = []
+
+    def converse(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"output": {"message": {"content": [{"text": '{"ok": true}'}]}},
+                "usage": {"inputTokens": 1000, "outputTokens": 500}, "stopReason": "end_turn"}
+
+
+def test_the_consumers_own_premium_model_runs_every_task(install):
+    from app.clhear.platform.gateway import BedrockProvider
+    from app.clhear.platform.router import TASKS, Router
+    from app.clhear.runtime import engine
+
+    router = Router(engine(), providers={"bedrock": BedrockProvider("us.anthropic.claude-opus-5", client=Converse())})
+    for task_id in TASKS:
+        decision = router.decide(task_id)
+        assert decision.chosen_model == "us.anthropic.claude-opus-5", task_id
+        assert decision.ladder_source == "configured"
+
+
+def test_bedrock_profile_calls_count_against_the_premium_cap(install):
+    from app.clhear.platform.gateway import BedrockProvider
+    from app.clhear.platform.task_classes import CLAUDE_OPUS_5
+    from app.clhear.runtime import engine
+
+    client = Converse()
+    gateway = Gateway(engine(), BedrockProvider("us.anthropic.claude-opus-5", client=client))
+    result = gateway.call(fleet="l8.fill", model="us.anthropic.claude-opus-5", prompt="hi", required_keys=["ok"])
+    price_in, price_out = gw.BEDROCK_PRICING[CLAUDE_OPUS_5]
+    assert result.cost_usd == pytest.approx((1000 * price_in + 500 * price_out) / 1_000_000)
+    assert client.calls[0]["modelId"] == "us.anthropic.claude-opus-5"
+    assert "temperature" not in client.calls[0]["inferenceConfig"]
+    assert gateway.premium_spend_month() == pytest.approx(result.cost_usd)
+
+    capped = Gateway(engine(), BedrockProvider("us.anthropic.claude-opus-5", client=client),
+                     frontier_monthly_cap_usd=result.cost_usd)
+    with pytest.raises(gw.SpendCapExceeded, match="premium monthly cap"):
+        capped.call(fleet="l8.fill", model="us.anthropic.claude-opus-5", prompt="hi")
+    assert len(client.calls) == 1

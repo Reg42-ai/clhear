@@ -3,17 +3,17 @@
 """Host HTTP API. A run is inserted here and executed by the worker."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.clhear.contribution import ContributionProposal, ProposalRejected, parse_proposal
 from app.clhear.l1.adapters import PUBLISHER_ADAPTER_CLASSES
+from app.clhear.l1.models import SOURCE_KINDS as _SOURCE_KINDS
 from app.clhear.l1.scopes import SCOPE_ENV
 from app.clhear.service_auth import require_token
 from app.clhear.settings import get_settings
-
-_SOURCE_KINDS = ("law", "regulation", "standard", "guidance", "form", "agreement", "enforcement")
 
 
 class SourceBody(BaseModel):
@@ -27,6 +27,8 @@ class SourceBody(BaseModel):
     kind: str = "guidance"
     jurisdiction: str = ""
     issuer: str = ""
+    reference: str = ""
+    binding: bool | None = None
 
 
 class SourceCreate(SourceBody):
@@ -56,6 +58,27 @@ class WebhookBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str
     secret: str
+
+
+class SnapshotBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    licence: str = Field(description="The licence the snapshot is published under, or 'not-for-publication'")
+    title: str = ""
+    notice: str = ""
+    profiles: list[str] = Field(default_factory=list, description="Some of the release's profiles; empty means all")
+
+
+class SnapshotFile(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    snapshot: str = Field(description="The snapshot .zip, base64-encoded")
+
+
+class SnapshotMatchBody(SnapshotFile):
+    attributes: dict = Field(description="The organisation profile to match: jurisdictions, roles, conditions, licences")
+
+
+# A snapshot quotes clauses and lists obligations; it is small next to the texts it reads.
+MAX_SNAPSHOT_BYTES = 25 * 1024 * 1024
 
 
 def _engine():
@@ -97,6 +120,8 @@ def _source_out(row: dict) -> dict:
         "kind": row["kind"],
         "jurisdiction": row["jurisdiction"],
         "issuer": row["issuer"],
+        "reference": row.get("reference") or "",
+        "binding": row.get("binding"),
         "updated_at": _iso(row["updated_at"]),
     }
 
@@ -225,7 +250,7 @@ def create_app() -> FastAPI:
 
     @application.get("/v1/scopes/{name}/advice")
     def scope_advice(name: str) -> dict:
-        from app.clhear.advisor import advise
+        from app.clhear.advisor import advise, source_inventory
         from app.clhear.l1 import scopes
 
         try:
@@ -233,7 +258,8 @@ def create_app() -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         with _engine().connect() as conn:
-            return {"scope": name, "source_advice": advise(conn, name, keys)}
+            return {"scope": name, "source_advice": advise(conn, name, keys),
+                    "source_inventory": source_inventory(conn, name, keys)}
 
     @application.put("/v1/profiles/{profile_id}")
     def put_profile(profile_id: str, body: ProfileBody) -> dict:
@@ -368,6 +394,56 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="webhook not found")
         return {"deleted": webhook_id}
 
+    @application.post(
+        "/v1/releases/{release_id}/snapshot",
+        response_class=Response,
+        responses={200: {"content": {"application/zip": {}},
+                         "description": "The snapshot as a .zip. X-Content-Hash carries its content hash."}},
+    )
+    def create_snapshot(release_id: str, body: SnapshotBody) -> Response:
+        """Write a stored release's reference blueprints as a snapshot and return it. Stores nothing."""
+        import tempfile
+        from pathlib import Path
+
+        from app.clhear import snapshot
+
+        _release_or_404(release_id)
+        name = f"clhear-snapshot-{release_id}"
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                made = snapshot.create(_engine(), release_id, Path(tmp) / name, licence=body.licence,
+                                       profiles=body.profiles or None, title=body.title, notice=body.notice,
+                                       make_zip=True)
+            except snapshot.SnapshotError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            data = Path(made["zip"]).read_bytes()
+        return Response(content=data, media_type="application/zip",
+                        headers={"X-Content-Hash": made["content_hash"],
+                                 "Content-Disposition": f'attachment; filename="{name}.zip"'})
+
+    @application.post("/v1/snapshots/verify")
+    def verify_snapshot(body: SnapshotFile) -> dict:
+        """Check that every file a snapshot lists is present with its hash. Reads the files only."""
+        from app.clhear import snapshot
+
+        with _snapshot_file(body.snapshot) as path:
+            try:
+                return snapshot.verify(path)
+            except snapshot.SnapshotError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @application.post("/v1/snapshots/match")
+    def match_snapshot(body: SnapshotMatchBody) -> dict:
+        """Whether an organisation profile gets the same verdicts as a profile of the snapshot.
+        Reads the files only: no model call, nothing stored."""
+        from app.clhear import snapshot
+
+        with _snapshot_file(body.snapshot) as path:
+            try:
+                return snapshot.match(path, body.attributes)
+            except snapshot.SnapshotError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @application.post("/v1/contributions/validate", response_model=ContributionProposal)
     def validate_contribution(body: ContributionProposal) -> ContributionProposal:
         """Validate a contribution proposal. This service does not send it anywhere."""
@@ -393,6 +469,28 @@ def _write_source(key: str, body: SourceBody) -> dict:
     return _source_out(row)
 
 
+@contextmanager
+def _snapshot_file(encoded: str):
+    """A base64 snapshot .zip as a temporary file, removed afterwards."""
+    import base64
+    import binascii
+    import tempfile
+    from pathlib import Path
+
+    try:
+        data = base64.b64decode(encoded or "", validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="snapshot is not base64") from exc
+    if not data:
+        raise HTTPException(status_code=422, detail="snapshot is empty")
+    if len(data) > MAX_SNAPSHOT_BYTES:
+        raise HTTPException(status_code=413, detail=f"a snapshot is at most {MAX_SNAPSHOT_BYTES} bytes")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "snapshot.zip"
+        path.write_bytes(data)
+        yield path
+
+
 def _release_or_404(release_id: str) -> dict:
     from app.clhear import hoststore
 
@@ -403,23 +501,9 @@ def _release_or_404(release_id: str) -> dict:
 
 
 def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> dict:
-    return {
-        "blueprint_id": composition.get("blueprint_id"),
-        "profile_id": profile_id or composition.get("profile_id"),
-        "items": composition.get("items") or [],
-        "coverage": composition.get("coverage") or [],
-        "minimality": composition.get("minimality") or {},
-        "coverage_summary": composition.get("coverage_summary") or {},
-        "not_applicable": composition.get("not_applicable") or [],
-        "undetermined": composition.get("undetermined") or [],
-        "open_questions": composition.get("open_questions") or [],
-        "evidence_gaps": composition.get("evidence_gaps") or [],
-        "source_advice": composition.get("source_advice") or [],
-        "profile_warnings": composition.get("profile_warnings") or [],
-        "scope": composition.get("scope"),
-        **({"sample": True} if composition.get("sample") else {}),
-        "engine_version": composition.get("engine_version"),
-    }
+    from app.clhear.blueprint_view import public_blueprint
+
+    return public_blueprint(composition, profile_id=profile_id)
 
 
 def _find_blueprint(blueprint_id: str) -> dict | None:

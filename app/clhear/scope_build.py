@@ -157,6 +157,24 @@ def _source_gaps(engine: Engine, failed: list[dict]) -> None:
                                 missing=f"readable text ({item.get('error') or item.get('status')})")
 
 
+def _reference_gaps(engine: Engine, keys) -> int:
+    """A text the scope's clauses cite but the scope does not hold: name it as the clauses word it."""
+    from app.clhear import evidence
+    from app.clhear.l1 import references
+
+    with engine.begin() as conn:
+        cited = references.missing(conn, keys)
+        for item in cited:
+            first = item["cited_by"][0]
+            evidence.record_gap(conn, scope=scopes.active_name() or "", layer="L1", kind="unresolved_reference",
+                                subject=item["subject"], source_key=first["source_key"],
+                                clause_ref=first["clause_ref"], missing=f"the text of '{item['cited_as']}'",
+                                detail={"cited": item["cited_as"], "register_as": item["register_as"],
+                                        "registered_as": item["registered_as"], "cited_by": item["cited_by"]},
+                                cited=item["cited_as"], register_as=item["register_as"])
+    return len(cited)
+
+
 def _no_duties_gap(engine: Engine, keys) -> None:
     """Texts were read but no clause states a duty: say which text would."""
     import sqlalchemy as sa
@@ -291,24 +309,40 @@ def _kinds_in_scope(engine: Engine) -> set[str]:
         return {r[0] for r in conn.execute(sa.select(sources.c.kind).where(sources.c.key.in_(scopes.source_keys())))}
 
 
-def _not_built(engine: Engine, layer: str, kind: str, missing: str) -> dict:
+def _not_built(engine: Engine, layer: str, kind: str, missing: str, detail: dict | None = None) -> dict:
     """A layer with no source to derive from: no rows, no model call, one gap."""
     from app.clhear import evidence
 
     _clear_gaps(engine, layer)
     with engine.begin() as conn:
         gid = evidence.record_gap(conn, scope=scopes.active_name() or "", layer=layer, kind=kind, subject=layer,
-                                  missing=missing)
+                                  missing=missing, detail=detail)
     return {"built": False, "reason": evidence.recommendation(kind), "gap": gid}
 
 
-def derive_l7(engine: Engine, llm) -> dict:
-    from app.clhear.l7 import enforcement, score
+def _no_enforcement(engine: Engine, stated: int) -> dict:
+    """No enforcement source: the gap says whether risk still rests on penalties the texts state."""
+    missing = (f"an enforcement source (kind 'enforcement'); risk rests only on the {stated} "
+               f"penalt{'y' if stated == 1 else 'ies'} the texts in scope state" if stated else
+               "an enforcement source (kind 'enforcement'), or the penalty provisions of the texts in scope")
+    return _not_built(engine, "L7", "no_enforcement_sources", missing, detail={"stated_penalties": stated})
 
+
+def derive_l7(engine: Engine, llm) -> dict:
+    """Risk inputs: the penalties the binding texts in scope state, and, stronger, the
+    enforcement events of the enforcement sources in scope. With neither, L7 is not built."""
+    from app.clhear.l7 import enforcement, penalties, score
+
+    stated = penalties.derive(engine, scopes.source_keys())
     if "enforcement" not in _kinds_in_scope(engine):
-        return _not_built(engine, "L7", "no_enforcement_sources", "an enforcement source (kind 'enforcement')")
-    _clear_gaps(engine, "L7")
-    return {"events": enforcement.ingest_events(engine), "links": enforcement.link_events(engine, llm),
+        if not stated["found"]:
+            return _no_enforcement(engine, 0)
+        _no_enforcement(engine, stated["found"])  # built from stated penalties; the stronger input is still missing
+        found = {}
+    else:
+        _clear_gaps(engine, "L7")
+        found = {"events": enforcement.ingest_events(engine), "links": enforcement.link_events(engine, llm)}
+    return {"penalties": {k: stated[k] for k in ("found", "linked_obligations")}, **found,
             "calibration": {k: v for k, v in score.calibrate(engine).items() if k in ("status", "id", "held_out_year")},
             "obligation_scores": {k: v for k, v in score.score_obligations(engine).items() if k != "bands"}}
 
@@ -319,14 +353,19 @@ def item_priority(engine: Engine) -> dict:
     return score.score_items(engine)
 
 
+# L8 practices come from guidance, and from the remediation enforcement actions order.
+_NO_PRACTICE_SOURCE = "a guidance source (kind 'guidance') or an enforcement source that orders remediation (kind 'enforcement')"
+
+
 def derive_l8(engine: Engine, llm) -> dict:
     from app.clhear.l8.reference import reference_rows
 
-    if "guidance" not in _kinds_in_scope(engine):
-        return _not_built(engine, "L8", "no_reference_sources", "a guidance or reference source (kind 'guidance')")
+    if not {"guidance", "enforcement"} & _kinds_in_scope(engine):
+        return _not_built(engine, "L8", "no_reference_sources", _NO_PRACTICE_SOURCE)
     _clear_gaps(engine, "L8")
     rows = reference_rows(engine)
-    return {"reference_rows": len(rows), "mapped_to_blocks": sum(1 for r in rows if r["block_id"])}
+    return {"reference_rows": len(rows), "mapped_to_blocks": sum(1 for r in rows if r["block_id"]),
+            "remediation": sum(1 for r in rows if r["kind"] == "remediation")}
 
 
 def _counts(engine: Engine, layer: str) -> dict:
@@ -363,11 +402,14 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
         # L7 and L8 run after the blueprint: record now what they will lack, and clear what they no
         # longer lack, so the blueprint says so.
         if "enforcement" not in kinds:
-            _not_built(engine, "L7", "no_enforcement_sources", "an enforcement source (kind 'enforcement')")
+            from app.clhear.l7.penalties import find
+
+            with engine.connect() as conn:
+                _no_enforcement(engine, len(find(conn, scope.get("sources") or [])))
         else:
             _clear_gaps(engine, "L7")
-        if "guidance" not in kinds:
-            _not_built(engine, "L8", "no_reference_sources", "a guidance or reference source (kind 'guidance')")
+        if not {"guidance", "enforcement"} & kinds:
+            _not_built(engine, "L8", "no_reference_sources", _NO_PRACTICE_SOURCE)
         else:
             _clear_gaps(engine, "L8")
         detail = derive_l6(engine, llm, held["profiles"], withheld=held["lineage"]["withheld"])
@@ -397,6 +439,7 @@ def build(engine: Engine, llm, *, skip_import: bool = False, profiles: list[dict
             report["sources"] = detail.get("sources") or {}
             report["failed_sources"] = detail.get("failed_sources") or []
             _source_gaps(engine, report["failed_sources"])
+            report["unresolved_references"] = _reference_gaps(engine, list(scope.get("sources") or []))
             if not _stored_clause_count(engine, list(scope.get("sources") or [])):
                 reasons = "; ".join(f"{f['source_key']}: {f['error'] or f['status']}" for f in report["failed_sources"])
                 raise RuntimeError("No text could be read from this scope's sources" + (f" ({reasons})" if reasons else ""))
