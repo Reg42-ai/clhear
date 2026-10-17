@@ -111,7 +111,7 @@ CONSTRUCTION_SUBJECT = re.compile(
     re.I,
 )
 NON_DUTY_PREDICATE = re.compile(
-    r"(?:must|shall|may)\s+(?:not\s+)?(?:apply\s+(?:to|only|in|with respect|where)|be deemed|be construed|be treated|"
+    r"(?:must|shall|may)\s+(?:not\s+)?(?:apply\s+(?:to|only|in|with respect|with regard|where)|be deemed|be construed|be treated|"
     r"be considered|be subject to|"
     r"mean|become final|have no authority|have jurisdiction|in anywise|"
     r"forfeit|be liable (?:for|to)|be fined|be imprisoned|be punished)\b",

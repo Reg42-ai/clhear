@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Reg42 AI
 # This file is part of CLHEAR. See LICENSE (AGPL-3.0-only).
-"""L3 decomposers — obligation -> building block(s) (HLD v2 §4.3).
+"""L3 decomposers — obligation -> component(s) (HLD v2 §4.3).
 
 Deterministic-first, and only from the duty's own words: the measure is what
 the duty tells the addressee to do or to have, quoted from the clause ("keep a
@@ -25,7 +25,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from app.clhear.derived_models import blocks, characteristics, obligations, requires
 from app.clhear import evidence
-from app.clhear.l2.registry import duty_span, field_quotes, obligation_clauses
+from app.clhear.l2.registry import CONTENT_VERBS, duty_span, field_quotes, head_phrase, obligation_clauses
 from app.clhear.l3.kinds import KINDS, kind_from_words
 from app.clhear.platform import record
 from app.clhear.platform.ids import next_id
@@ -58,15 +58,33 @@ MAX_NAME_WORDS = 12
 
 # "establish and maintain", "establish, implement and maintain": one action with several verbs.
 _VERB_GROUP = re.compile(r"^(\w+(?:,\s*\w+)*,?\s+(?:and|or|and/or)\s+\w+)(?:\s+(.*))?$", re.I | re.S)
+# A verb and its particle are one verb: "set forth the supervisory system" is not "set" + "forth ...".
+_PHRASAL = re.compile(r"^((?:set|carry|lay|draw|put|follow|write|spell|point|take|keep|draw)\s+"
+                      r"(?:forth|out|down|up|in place|into account|on file|up to date))\b\s*(.*)$", re.I | re.S)
+# Words a name does not end on: "Approve each retail communication before the earlier of".
+_DANGLING = frozenset({"of", "the", "a", "an", "its", "their", "to", "for", "in", "on", "with", "by", "and", "or",
+                       "that", "which", "who", "pursuant", "before", "after", "under", "from", "at", "as", "any",
+                       "all", "each", "such", "between", "within", "including", "than", "upon", "into"})
 
 
 def split_verb(phrase: str) -> tuple[str, str]:
     """(verb or coordinated verb group, the rest)."""
+    phrasal = _PHRASAL.match(phrase)
+    if phrasal:
+        return phrasal.group(1), phrasal.group(2) or ""
     group = _VERB_GROUP.match(phrase)
     if group:
         return group.group(1), group.group(2) or ""
     verb, _, rest = phrase.partition(" ")
     return verb, rest
+
+
+def tidy_name(name: str) -> str:
+    """A name that does not stop on a preposition, an article or an open parenthesis."""
+    words = name.split()
+    while len(words) > 1 and (words[-1].lower().strip(",;:") in _DANGLING or words[-1].count("(") > words[-1].count(")")):
+        words.pop()
+    return " ".join(words).strip(" ,;:")
 
 
 def measure_phrase(action: str) -> str:
@@ -76,7 +94,7 @@ def measure_phrase(action: str) -> str:
     second = _SECOND_ACTION.search(f" {rest}") if rest else None
     if second:  # a second action with its own verb and object starts the next measure
         phrase = f"{verb} {f' {rest}'[:second.start()].strip()}".strip()
-    return " ".join(phrase.strip(" ,;:.").split()[:MAX_NAME_WORDS])
+    return tidy_name(" ".join(phrase.strip(" ,;:.").split()[:MAX_NAME_WORDS]))
 
 
 def _content(text: str) -> set[str]:
@@ -105,6 +123,9 @@ def propose_block(obligation: dict, clauses: list[dict]) -> dict | None:
     if (obligation.get("modality") in ("must-not", "prohibited")
             or (obligation.get("obligation_type") or "").startswith("not ")):
         return _prohibition(obligation, phrase, subject, passive, clauses)
+    content = _content_of(obligation, subject, clauses)
+    if content is not None:
+        return content
     if passive:
         if not subject:
             return None
@@ -114,8 +135,9 @@ def propose_block(obligation: dict, clauses: list[dict]) -> dict | None:
         verb, rest = split_verb(phrase)
         obj = _DETERMINER.sub("", rest).strip()
         kind, kind_word = kind_from_words(verb, obj)
-        if kind == "Unspecified":
-            kind, kind_word = "Process", verb  # the duty says to do something: an activity to carry out
+        if kind == "Unspecified" or re.match(r"^that\b", rest, re.I):
+            # "ensure that statements are clear": an activity to carry out, not the thing its clause names
+            kind, kind_word = "Process", verb
         named = phrase if kind == "Process" or not obj else obj
         parts, name = [named], named[0].upper() + named[1:]
     quotes = []
@@ -128,6 +150,29 @@ def propose_block(obligation: dict, clauses: list[dict]) -> dict | None:
     duty = (obligation.get("evidence") or {}).get("duty") if isinstance(obligation.get("evidence"), dict) else None
     return {"kind": kind, "name": name[:160], "purpose": (duty or {}).get("quote") or phrase,
             "evidence": {"name": quotes, "kind": kind_quote or []}}
+
+
+def _content_of(obligation: dict, subject: str, clauses: list[dict]) -> dict | None:
+    """A duty that says what something contains ("The supervisory procedures shall include
+    procedures for the review of correspondence") names a document: its subject, with what
+    it must contain as a mandatory section. None for any other duty."""
+    action = " ".join((obligation.get("action") or "").split())
+    verb, rest = split_verb(action)
+    first = verb.split()[0].lower() if verb else ""
+    if not subject or not rest or (first not in CONTENT_VERBS and verb.lower() not in ("set forth", "set out")):
+        return None
+    if re.match(r"^(?:if|when|where|whenever|unless|while|once|whether)\b", subject, re.I):
+        return None  # a condition read as the subject: no document is named
+    head = _DETERMINER.sub("", head_phrase(subject)[0]).strip(" ,;:")
+    found = field_quotes(head, clauses) if head else None
+    if not found:
+        return None
+    kind, kind_word = kind_from_words("", head)
+    if kind not in ("Document", "System"):
+        kind, kind_word = "Document", first  # "must include ..." says it has contents: a written thing
+    duty = (obligation.get("evidence") or {}).get("duty") if isinstance(obligation.get("evidence"), dict) else None
+    return {"kind": kind, "name": (head[0].upper() + head[1:])[:160], "purpose": (duty or {}).get("quote") or action,
+            "evidence": {"name": found, "kind": field_quotes(kind_word, clauses) or []}}
 
 
 _NEGATIVE = re.compile(r"\b(?:must not|shall not|may not|should not|is not permitted to|are not permitted to|"
@@ -318,9 +363,42 @@ def decompose(engine: Engine, *, source_key: str | None = None, limit: int | Non
             created += int(was_created)
             if link(conn, obligation=ob, block_id=bid, method="deterministic", why=trail):
                 linked_derived += 1
-    out = {"examined": examined, "linked_derived": linked_derived, "blocks_created": created, "gaps": gaps}
+    out = {"examined": examined, "linked_derived": linked_derived, "blocks_created": created, "gaps": gaps,
+           "roles": name_roles(engine, source_key=source_key)}
     log.info("L3 decompose: %s", out)
     return out
+
+
+def name_roles(engine: Engine, *, source_key: str | None = None) -> dict:
+    """The people and functions duties are addressed to ("An appropriately qualified registered
+    principal of the member shall approve ...") as Role components those duties require, besides
+    their measure. Named in the text's words; variants of one role share a component."""
+    from app.clhear.l4.predicates import addressee_roles
+
+    created = linked = 0
+    with engine.begin() as conn:
+        for ob in _live_obligations(conn, source_key):
+            roles = [r for r in addressee_roles(ob)[0] if r.get("party") == "person"]
+            if not roles:
+                continue
+            clauses = obligation_clauses(conn, ob)
+            ref = ob["stable_id"] or ob["id"]
+            for role in roles:
+                quotes = role["quotes"] or field_quotes(role["label"], clauses) or []
+                if not quotes:
+                    continue
+                name = role["label"][0].upper() + role["label"][1:]
+                trail = why_for(ref, method="deterministic", confidence=0.8,
+                                summary=f"the duty is addressed to '{role['label']}': a role the organisation has",
+                                evidence_refs=[ob["id"], *quotes]).write(conn)
+                duty = (ob.get("evidence") or {}).get("duty") if isinstance(ob.get("evidence"), dict) else None
+                bid, was_created = find_or_create_block(conn, kind="Role", name=name,
+                                                        purpose=(duty or {}).get("quote") or name, why=trail,
+                                                        evidence={"name": quotes, "kind": quotes})
+                created += int(was_created)
+                if link(conn, obligation=ob, block_id=bid, method="deterministic", why=trail):
+                    linked += 1
+    return {"created": created, "linked": linked}
 
 
 def completeness(engine: Engine) -> dict:

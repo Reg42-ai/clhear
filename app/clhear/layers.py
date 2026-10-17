@@ -227,7 +227,7 @@ LAYER_CATALOG: dict[str, dict] = {
         "published": False,
         "status": "computed",
         "purpose": "Composes the leanest complete compliance program for one profile: the set of "
-        "L3 building blocks (items) that satisfies every applicable obligation, with a minimality "
+        "L3 components (items) that satisfies every applicable obligation, with a minimality "
         "proof and a full evidence chain per item (HLD v2 §4.6).",
         "derivation": {
             "inputs": ["L2", "L3", "L4", "L5"],

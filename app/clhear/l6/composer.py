@@ -111,13 +111,20 @@ def _question(e: dict) -> dict:
         return {"key": "jurisdictions", "ask": "Where do you operate?", "value": pred["jurisdictions"],
                 "evidence": [found["source"]] if found.get("source") else []}
     if "roles" in pred:
-        labels = found.get("labels") or {}
+        from app.clhear.l4.predicates import role_question
+
+        labels, parties = found.get("labels") or {}, found.get("parties") or {}
         names = [labels.get(r, r) for r in pred["roles"]]
-        return {"key": "roles", "ask": "Are you " + " or ".join(f"'{n}'" for n in names) + "?", "value": pred["roles"],
+        kinds = [parties.get(r) or "organisation" for r in pred["roles"]]
+        return {"key": "roles", "ask": role_question(names, kinds), "value": pred["roles"],
+                "labels": dict(zip(pred["roles"], names)), "parties": dict(zip(pred["roles"], kinds)),
                 "evidence": found.get("subject") or []}
     if "condition" in pred:
-        return {"key": "conditions", "id": pred["condition"], "ask": f"Does this hold for you: {e['rationale']}?",
-                "value": pred.get("fact"), "evidence": found.get("condition") or []}
+        from app.clhear.l4.predicates import condition_question
+
+        return {"key": "conditions", "id": pred["condition"],
+                "ask": condition_question(found.get("fact") or pred.get("fact") or "", e["rationale"]),
+                "value": pred.get("fact"), "text": e["rationale"], "evidence": found.get("condition") or []}
     return {"key": "retired", "ask": "This duty carries an applicability edge from an earlier version; rebuild the scope.",
             "value": pred, "evidence": []}
 

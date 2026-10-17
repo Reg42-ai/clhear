@@ -44,6 +44,121 @@ _LEADING_NUMBER = re.compile(
 _SENTENCE_END = re.compile(r"(?<=[.;:])\s+(?=[A-Z(\d])")
 _STRIP_TRAIL = re.compile(r"[\s,;:.]+$")
 
+# ----------------------------------------------------------------- the subject without what precedes it
+#
+# A clause often puts something before the subject of its duty: a heading kept in the text
+# ("General Requirements Each member shall ..."), a footnote number, a condition or time
+# ("When sponsoring a seminar, ..., persons associated with members shall ..."), a discourse
+# marker ("In particular, native advertising must ...") or a report of another text
+# ("Regulatory Notice 11-39 states that a firm should ..."). These are grammar, not vocabulary:
+# the words below are English connectives, prepositions and determiners.
+
+_FOOTNOTE = re.compile(r"^\d{1,3}\s+(?=[A-Z][a-z])")
+_HEADING_WORD = r"(?:[A-Z][\w'’\-]*|of|and|or|to|the|for|in|on|a|an|with|by|from|at|&)"
+_STARTER = (r"(?:A|An|The|Each|Every|Any|All|No|Such|If|When|Where|Whenever|Unless|In|For|At|Within|Notwithstanding|"
+            r"As|Further|Furthermore|However|Except|Subject|Provided|Before|After|Upon|Once|While|This|These|Those|"
+            r"Its|Their)")
+# A title-case run before a capitalised word that starts a sentence: "Disclosure of Member's Name All retail ..."
+_HEADING = re.compile(rf"^[A-Z][\w'’\-]*(?:\s+{_HEADING_WORD}){{0,14}}?\s+(?={_STARTER}\s)")
+_DISCOURSE = re.compile(r"^(?:further(?:more)?|moreover|however|also|additionally|accordingly|therefore|thus|"
+                        r"similarly|likewise|consequently|hence|nevertheless|nonetheless|finally|specifically|"
+                        r"importantly|alternatively|instead|indeed|in particular|in addition|for example|"
+                        r"for instance|e\.g\.|i\.e\.|as with|notwithstanding|despite|in this regard)(?=[\s,])", re.I)
+_PROVISO = re.compile(r"^(?:provided|but),?\s+(?:however,?\s+)?that\s+", re.I)
+_LEAD_CONDITION = re.compile(r"^(?:if|where|when|whenever|unless|provided that|subject to|in the event (?:that|of)|"
+                             r"to the extent(?: that)?|in cases where|in so far as|insofar as|once|while|until)(?=\s)",
+                             re.I)
+_ADVERBIAL = re.compile(r"^(?:for|at|in|within|during|under|by|on|upon|with|without|following|prior to|after|before|"
+                        r"beginning|starting|from|as of|throughout)(?=\s)", re.I)
+_REPORTED = re.compile(r"^[^,;]{0,120}?\b(?:notes|states|provides|explains|clarifies|adds|says|stated|noted|"
+                       r"explained|indicates|observes|advises|reminds \w+)(?:\s+that\s+(?=(?:a|an|the|each|every|any|"
+                       r"all|no|such|its|their|it|they|firms?|members?|determining|whether)\b)|\s*,?\s*[\"“])", re.I)
+# Adverbs left after the subject: "then the member also must file ..."
+_TRAILING_ADVERB = re.compile(r"\s+(?:also|further|then|additionally|however|therefore|thus|still|too|generally|only|"
+                              r"first|likewise|similarly|accordingly|nevertheless)$", re.I)
+_SUBJECT_OPENS = re.compile(r"^(?:then\s+)?(?:a|an|the|each|every|any|all|no|such|its|their|it|they|he|she|you|we)\b",
+                            re.I)
+_FINITE = re.compile(r"\b(?:is|are|was|were|has|have|had|do|does|did|will|would|can|could|shall|should|must|may|"
+                     r"might)\b", re.I)
+
+
+def _top_level(text: str, char: str) -> list[int]:
+    """Offsets of ``char`` outside parentheses, brackets and quotes."""
+    depth, quoted, out = 0, False, []
+    for i, c in enumerate(text):
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth = max(0, depth - 1)
+        elif c == '"':
+            quoted = not quoted
+        elif c == "“":
+            quoted = True
+        elif c == "”":
+            quoted = False
+        elif c == char and depth == 0 and not quoted:
+            out.append(i)
+    return out
+
+
+def _split_lead(text: str) -> tuple[str, str] | None:
+    """("When X, Y, Z", "persons associated with members") from a leading condition: the
+    subject follows the last comma that opens a noun phrase, or else the last comma."""
+    commas = _top_level(text, ",")
+    if not commas:
+        return None
+    for i in reversed(commas):
+        if _SUBJECT_OPENS.match(text[i + 1:].strip()):
+            return text[:i].strip(), text[i + 1:].strip()
+    return text[:commas[-1]].strip(), text[commas[-1] + 1:].strip()
+
+
+def clean_subject(subject: str) -> tuple[str, list[str]]:
+    """(the duty's subject, the phrases that preceded it and time or condition it).
+
+    A heading, a footnote number, a discourse marker or a report of another text is
+    dropped; a condition or time phrase ("When ...", "For a period of one year ...") is
+    returned so the caller keeps it as the duty's condition."""
+    text = " ".join((subject or "").split())
+    conditions: list[str] = []
+    for _ in range(8):
+        before = text
+        text = _FOOTNOTE.sub("", text)
+        text = _HEADING.sub("", text)
+        semis = _top_level(text, ";")
+        if semis:  # a new clause starts after a semicolon: "...; provided, however, that such communications"
+            text = text[semis[-1] + 1:].strip()
+        text = _PROVISO.sub("", text)
+        found = _REPORTED.match(text)
+        if found:
+            text = text[found.end():].lstrip("\"“ ")
+        text = re.sub(r"^\w+ing\s+whether\s+", "", text, flags=re.I)
+        if _DISCOURSE.match(text):
+            commas = _top_level(text, ",")
+            if commas:
+                text = text[commas[0] + 1:].strip()
+        elif _LEAD_CONDITION.match(text):
+            split = _split_lead(text)
+            if split and split[1]:
+                conditions.append(split[0])
+                text = split[1]
+        elif _ADVERBIAL.match(text):
+            commas = _top_level(text, ",")
+            if commas and text[commas[0] + 1:].strip():
+                conditions.append(text[:commas[0]].strip())
+                text = text[commas[0] + 1:].strip()
+        # "Any scripts ... are considered communications ..., and members": a new clause after ", and".
+        joins = [m for m in re.finditer(r",\s+(?:and|but|so)\s+", text, re.I) if m.start() in _top_level(text, ",")]
+        if joins and _FINITE.search(text[:joins[-1].start()]) and text[joins[-1].end():].strip():
+            text = text[joins[-1].end():].strip()
+        text = re.sub(r"^(?:then|that)\s+(?=(?:a|an|the|each|every|any|all|such|no|its|their|it|they|he|she)\b)", "",
+                      text, flags=re.I)
+        text = re.sub(r"^(?:each|every|any|all|some|none|one|either|neither)\s+of\s+(?=\S)", "", text, flags=re.I)
+        text = _TRAILING_ADVERB.sub("", text).strip(" ,;:")
+        if text == before:
+            break
+    return text, [c for c in conditions if c]
+
 def duty_span(text: str) -> tuple[int, int] | None:
     """(start, end) of the sentence carrying the first modal, as offsets into
     ``text`` — the highlighted span on the obligation page."""
@@ -84,11 +199,11 @@ def parse_structure(text: str) -> dict:
     if cm and cm.start() > 0:
         condition = "; ".join(filter(None, [condition, _STRIP_TRAIL.sub("", cm.group("cond")).strip()]))
         rest = _STRIP_TRAIL.sub("", rest[: cm.start()]).strip()
-    # Leading condition: "Where X, a firm must Y" -> the condition leaves the subject.
-    lead = re.match(r"^(?P<cond>(?:if|where|when|whenever|unless|subject to)\b[^,]{3,200}),\s*(?P<subj>.+)$", subject, re.I)
+    # What precedes the subject: "Where X, a firm must Y" -> the condition leaves the subject;
+    # a heading, a footnote number or a discourse marker is dropped.
+    subject, lead = clean_subject(subject)
     if lead:
-        condition = "; ".join(filter(None, [lead.group("cond").strip(), condition]))
-        subject = lead.group("subj").strip()
+        condition = "; ".join(filter(None, [*lead, condition]))
     rest = _STRIP_TRAIL.sub("", rest)
     # Object: the noun phrase after the first verb group — keep it simple and
     # honest: the first prepositional/object tail after the verb.
@@ -174,6 +289,115 @@ def binds_subject(structure: dict) -> bool:
 def is_universal(noun_phrase: str) -> bool:
     words = re.sub(r"^(?:(?:each|every|any|all|an?|the|such)\s+)+", "", (noun_phrase or "").strip().lower())
     return words in UNIVERSAL_ADDRESSEES or words in PRONOUNS
+
+
+# ----------------------------------------------------------------- party or thing
+#
+# Who a duty binds is a party: an organisation, or a person or function inside one. What a duty is
+# about is a thing ("Communications may not predict performance"; "The illustration must use actual
+# tax rates"): a thing is never asked "Are you ...?". The words below are plain English for things
+# and for people at work, the same kind of data model as l3.kinds.KIND_NOUNS, not any sector's terms.
+# A noun in neither list is read as an organisation, as before.
+
+THING_NOUNS = frozenset({
+    "communication", "correspondence", "advertisement", "advertising", "illustration", "comparison", "reference",
+    "material", "script", "slide", "handout", "legend", "testimonial", "recommendation", "information", "data",
+    "content", "language", "text", "wording", "link", "hyperlink", "page", "webpage", "website", "site", "app",
+    "message", "post", "email", "letter", "disclosure", "rate", "requirement", "paragraph", "provision", "rule",
+    "section", "subsection", "article", "clause", "chapter", "regulation", "standard", "term", "condition", "fee",
+    "charge", "price", "cost", "return", "income", "performance", "projection", "prediction", "claim", "opinion",
+    "product", "service", "security", "securities", "investment", "fund", "account", "transaction", "order",
+    "trade", "payment", "money", "fact", "copy", "version", "draft", "form", "filing", "submission", "notification",
+    "request", "complaint", "approval", "review", "audit", "assessment", "test", "training", "framework",
+    "program", "programme", "arrangement", "measure", "control", "process", "activity", "operation", "device",
+    "technology", "model", "algorithm", "output", "input", "result", "image", "video", "audio", "broadcast",
+    "interview", "seminar", "appearance", "event", "ranking", "chart", "graph", "table", "figure", "summary",
+    "description", "explanation", "prospectus", "item", "matter", "obligation", "duty", "right", "name",
+    "logo", "label", "headline", "statement", "notice", "report", "record", "procedure", "policy", "plan",
+})
+PERSON_NOUNS = frozenset({
+    "principal", "analyst", "supervisor", "employee", "staff", "director", "officer", "manager", "representative",
+    "coordinator", "personnel", "trader", "salesperson",
+})
+_GENERIC_PEOPLE = frozenset({"person", "persons", "individual", "individuals", "people"})
+_PHRASE_STOP = frozenset({"of", "to", "for", "in", "on", "with", "by", "from", "at", "about", "under", "within",
+                          "between", "against", "into", "that", "which", "who", "whom", "whose", "where", "when",
+                          "if", "unless", "providing", "including", "as", "than"})
+_FUNCTION = _PHRASE_STOP | {"a", "an", "the", "its", "their", "his", "her", "any", "all", "each", "every", "such",
+                            "no", "and", "or", "this", "these", "those"}
+
+
+def singular(word: str) -> str:
+    low = word.lower()
+    if len(low) <= 3 or low.endswith(("ss", "us", "is")):
+        return low
+    if low.endswith("ies"):
+        return low[:-3] + "y"
+    if low.endswith(("sses", "shes", "ches", "xes", "zes")):
+        return low[:-2]
+    if low.endswith("s"):
+        return low[:-1]
+    return low
+
+
+def head_phrase(noun_phrase: str) -> tuple[str, str]:
+    """(the noun phrase's head words, what follows them).
+
+    "appropriately qualified registered principal of the member" -> ("appropriately qualified
+    registered principal", "of the member"); "Tax rates used in an illustration" -> ("Tax rates",
+    "used in an illustration"): a participle after the noun that opens a phrase ("used in",
+    "making the") is where the head ends."""
+    words = (noun_phrase or "").split()
+    for i, word in enumerate(words):
+        low = word.lower().strip(",;:()\"'“”")
+        if i and (low in _PHRASE_STOP or _FINITE.fullmatch(low)):
+            return " ".join(words[:i]), " ".join(words[i:])
+        if i and len(low) > 3 and low.endswith(("ing", "ed")):
+            following = words[i + 1].lower() if i + 1 < len(words) else ""
+            # "persons concerned", "rates used in", "person making the": a participle after the noun.
+            # A final "-ing" is the noun itself ("native advertising").
+            if (following and following in _FUNCTION) or (not following and low.endswith("ed")):
+                return " ".join(words[:i]), " ".join(words[i:])
+    return " ".join(words), ""
+
+
+def party_of(noun_phrase: str) -> str:
+    """"thing", "person", "universal" or "organisation" for one noun phrase of a duty's subject."""
+    from app.clhear.l3.kinds import KIND_NOUNS
+
+    phrase = re.sub(r"^(?:(?:each|every|any|all|an?|the|such|no|its|their)\s+)+", "", (noun_phrase or "").strip(),
+                    flags=re.I)
+    if not phrase:
+        return ""
+    if is_universal(phrase):
+        return "universal"
+    head, _ = head_phrase(phrase)
+    words = re.findall(r"[A-Za-z][\w\-]*", head)
+    if not words:
+        return "thing"
+    noun = singular(words[-1])
+    if words[-1].lower() in _GENERIC_PEOPLE:
+        # "person making the testimonial" is anyone; "associated person" names people inside the organisation.
+        return "person" if len(words) > 1 else "universal"
+    if is_universal(words[-1]):
+        return "organisation" if len(words) > 1 else "universal"  # "covered entity"
+    if noun in PERSON_NOUNS:
+        return "person"
+    things = {singular(w) for kind, nouns in KIND_NOUNS.items() if kind not in ("Role", "Body") for w in nouns}
+    if noun in THING_NOUNS or noun in things or words[-1].lower() in THING_NOUNS:
+        return "thing"
+    return "organisation"
+
+
+def addressee(structure: dict) -> str:
+    """The subject when it is a party the duty binds (an organisation, or a person or function
+    in one), else "". Things, pronouns and "every organisation" name no addressee."""
+    subject = " ".join((structure.get("subject") or "").split())
+    if not subject or subject.lower() in PRONOUNS or not binds_subject(structure):
+        return ""
+    parts = [p for p in re.split(r"\s*(?:,|\band/or\b|\band\b|\bor\b)\s*", head_phrase(subject)[0]) if p.strip()]
+    kinds = {party_of(p) for p in parts}
+    return subject if kinds & {"organisation", "person"} else ""
 
 
 def field_quotes(value: str, clauses: list[dict]) -> list[dict] | None:
