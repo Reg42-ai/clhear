@@ -202,7 +202,8 @@ def test_a_snapshot_carries_layers_7_and_8_as_the_run_left_them(live, tmp_path):
     assert practices and all(p["source"]["source_key"] == "guide" and p["quote"] in " ".join(GUIDE.split())
                              for p in practices)
     readme = (folder / "README.md").read_text()
-    assert "1 penalties the binding texts state" in readme and f"{len(practices)} practices" in readme
+    assert "1 penalty the binding texts state" in readme
+    assert f"{len(practices)} {'practice' if len(practices) == 1 else 'practices'} read from" in readme
     # A later run rewrites the L7 and L8 tables; the snapshot of this release keeps what this run left.
     hoststore_scope = client.post("/v1/scopes", json={"name": "records-only", "sources": ["records"]})
     assert hoststore_scope.status_code == 201

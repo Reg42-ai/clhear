@@ -393,11 +393,13 @@ def _readme(manifest: dict, warnings: list[str], basis: dict | None = None) -> s
     if risk is not None or practices is not None:
         lines += ["", "## Layers 7 and 8", ""]
     if risk is not None:
-        lines.append(f"- `risk.json`: {len(risk.get('penalties') or [])} penalties the binding texts state, quoted, and "
-                     f"{len(risk.get('scores') or [])} obligation risk scores under method "
+        stated, scored = len(risk.get("penalties") or []), len(risk.get("scores") or [])
+        lines.append(f"- `risk.json`: {stated} {'penalty' if stated == 1 else 'penalties'} the binding texts state, quoted, "
+                     f"and {scored} obligation risk {'score' if scored == 1 else 'scores'} under method "
                      f"`{(risk.get('method') or {}).get('method_version')}`.")
     if practices is not None:
-        lines.append(f"- `practices.json`: {len(practices)} practices read from the texts in scope that do not bind, quoted.")
+        lines.append(f"- `practices.json`: {len(practices)} {'practice' if len(practices) == 1 else 'practices'} read from "
+                     "the texts in scope that do not bind, quoted.")
     if manifest.get("models"):
         lines += ["", "## Models used by the run", ""]
         lines += [f"- {m['provider']} `{m['model']}`: {m['calls']} calls" for m in manifest["models"]]
