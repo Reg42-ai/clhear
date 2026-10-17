@@ -255,6 +255,60 @@ def _load_json(path: str) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def cmd_recipe_apply(args) -> int:
+    from app.clhear import recipe
+
+    try:
+        result = recipe.apply(_engine(), _load_json(args.file))
+    except recipe.RecipeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print(result)
+    return 0 if all(v["valid"] for v in result["profiles"].values()) else 1
+
+
+def cmd_snapshot_create(args) -> int:
+    from app.clhear import snapshot
+
+    try:
+        result = snapshot.create(_engine(), args.release, args.out, licence=args.licence, profiles=args.profile or None,
+                                 title=args.title, notice=args.notice, make_zip=args.zip)
+    except snapshot.SnapshotError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print(result)
+    return 0
+
+
+def cmd_snapshot_verify(args) -> int:
+    from app.clhear import snapshot
+
+    try:
+        result = snapshot.verify(args.path)
+    except snapshot.SnapshotError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _print(result)
+    return 0 if result["valid"] else 1
+
+
+def cmd_snapshot_match(args) -> int:
+    from app.clhear import snapshot
+
+    payload = _load_json(args.profile)
+    attributes = payload.get("attributes", payload) if isinstance(payload, dict) else {}
+    try:
+        result = snapshot.match(args.path, attributes)
+    except snapshot.SnapshotError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if args.json:
+        _print(result)
+    else:
+        print(snapshot.describe_match(result))
+    return 0 if result["matches"] else 2
+
+
 def cmd_sources_add(args) -> int:
     from app.clhear import hoststore
     from app.clhear.first_run import SOURCE_KINDS
@@ -481,6 +535,33 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("--release", required=True)
     show.add_argument("--profile", required=True)
     show.set_defaults(func=cmd_blueprint_show)
+
+    recipe_cmd = sub.add_parser("recipe", help="sources, scope and profiles of a run in one file")\
+        .add_subparsers(dest="recipe_command", required=True)
+    recipe_apply = recipe_cmd.add_parser("apply", help="register a recipe's sources, scope and profiles")
+    recipe_apply.add_argument("file")
+    recipe_apply.set_defaults(func=cmd_recipe_apply)
+
+    snap = sub.add_parser("snapshot", help="publish a release's reference blueprints as files anyone can check and match")\
+        .add_subparsers(dest="snapshot_command", required=True)
+    snap_create = snap.add_parser("create", help="write a snapshot of a stored release")
+    snap_create.add_argument("--release", required=True)
+    snap_create.add_argument("--out", required=True, help="an empty or new folder")
+    snap_create.add_argument("--profile", action="append", default=[], help="a profile of the release (repeatable; default all)")
+    snap_create.add_argument("--licence", "--license", dest="licence", required=True,
+                             help="the licence the snapshot is published under, or 'not-for-publication'")
+    snap_create.add_argument("--title", default="")
+    snap_create.add_argument("--notice", default="", help="a sentence printed at the top of the snapshot's README")
+    snap_create.add_argument("--zip", action="store_true", help="also write <out>.zip")
+    snap_create.set_defaults(func=cmd_snapshot_create)
+    snap_verify = snap.add_parser("verify", help="check a snapshot's files against its manifest")
+    snap_verify.add_argument("path", help="a snapshot folder or .zip")
+    snap_verify.set_defaults(func=cmd_snapshot_verify)
+    snap_match = snap.add_parser("match", help="does an organisation profile match one of a snapshot's profiles?")
+    snap_match.add_argument("path", help="a snapshot folder or .zip")
+    snap_match.add_argument("--profile", required=True, help="a JSON file: {\"attributes\": {...}} or the attributes alone")
+    snap_match.add_argument("--json", action="store_true")
+    snap_match.set_defaults(func=cmd_snapshot_match)
 
     serve = sub.add_parser("serve", help="serve the HTTP API on this machine")
     serve.add_argument("--host", default=os.environ.get("CLHEAR_BIND_HOST", "127.0.0.1"))

@@ -407,24 +407,9 @@ def _release_or_404(release_id: str) -> dict:
 
 
 def _public_blueprint(composition: dict, *, profile_id: str | None = None) -> dict:
-    return {
-        "blueprint_id": composition.get("blueprint_id"),
-        "profile_id": profile_id or composition.get("profile_id"),
-        "items": composition.get("items") or [],
-        "coverage": composition.get("coverage") or [],
-        "minimality": composition.get("minimality") or {},
-        "coverage_summary": composition.get("coverage_summary") or {},
-        "not_applicable": composition.get("not_applicable") or [],
-        "undetermined": composition.get("undetermined") or [],
-        "open_questions": composition.get("open_questions") or [],
-        "evidence_gaps": composition.get("evidence_gaps") or [],
-        "source_advice": composition.get("source_advice") or [],
-        "source_inventory": composition.get("source_inventory") or [],
-        "profile_warnings": composition.get("profile_warnings") or [],
-        "scope": composition.get("scope"),
-        **({"sample": True} if composition.get("sample") else {}),
-        "engine_version": composition.get("engine_version"),
-    }
+    from app.clhear.blueprint_view import public_blueprint
+
+    return public_blueprint(composition, profile_id=profile_id)
 
 
 def _find_blueprint(blueprint_id: str) -> dict | None:
